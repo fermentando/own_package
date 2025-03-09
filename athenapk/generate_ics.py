@@ -73,7 +73,7 @@ def simulate_percolation(dimensions, p, sigma):
     return smoothed_field > threshold
 
 
-def create_ISM(filename_input='ism.in', ism_width_ratio=10, fv=None, n_jobs=-1):
+def create_ISM(filename_input='ism.in', ism_width_ratio=3.6, fv=None, n_jobs=-1):
     """ Generate ISM field with percolation and density fluctuations. """
     params = load_params(filename_input)
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
@@ -84,7 +84,7 @@ def create_ISM(filename_input='ism.in', ism_width_ratio=10, fv=None, n_jobs=-1):
     sigma = float(kin) * Rcloud / 6 / cell_size if ',' not in kin else tuple(float(k) * Rcloud / 6 / cell_size for k in kin.split(','))
     
     print("Sigma:", sigma)
-    dimensions = (nx1, math.ceil(nx2 / ism_width_ratio), nx3)
+    dimensions = (nx1, math.ceil(ism_width_ratio * Rcloud/cell_size), nx3)
     
     # Parallel percolation simulation
     percolation_fields = Parallel(n_jobs=n_jobs)(delayed(simulate_percolation)(dimensions, fv, sigma) for _ in range(1))

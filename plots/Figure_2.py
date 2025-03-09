@@ -6,12 +6,13 @@ import os
 from plot_2d_image import plot_projection
 import read_hdf5 as rd
 
-Hist = True
-Proj = False
+Hist = False
+Proj = True
 # Define parameters
-baseDir = '/raven/ptmp/ferhi/RavenGPU/ISM_slab/'
-vol = ['fv01e','']  # Only one row for now
-snps = [1 , 7, 12]
+baseDir = '/raven/ptmp/ferhi/ISM_thinslab/'
+savename ='thinslab_highres_Figure_2'
+vol = ['fv01_highres']  # Only one row for now
+snps = [1 , 9, 17]
 vmin, vmax = 1e-26, 1e-24  # Color scale normalization
 if Proj: 
     fig, axes = plt.subplots(nrows=len(vol), ncols=len(snps), figsize=(15, 9), gridspec_kw={'wspace': 0.03, 'hspace': 0.03})
@@ -49,7 +50,7 @@ if Proj:
     fig.colorbar(im, cax=cbar_ax)
     cbar_ax.tick_params(axis='y', which='both', color='white', labelcolor='black', labelsize=16, length = 6, direction='in')
     cbar_ax.set_ylabel(r'$\rho \, [\mathrm{cm}^{-3}]$', fontsize=20)
-    plt.savefig('/u/ferhi/Figures/thinslab_Figure_2.png')
+    plt.savefig(f'/u/ferhi/Figures/{savename}.png')
     plt.show()
     plt.clf()
 
@@ -88,5 +89,5 @@ if Hist:
             #axes[i, j].set_yticks([])
 
     # Final adjustments
-    plt.tight_layout()
+    plt.tight_layout('thinslab_fv01_highres.png')
     plt.show()

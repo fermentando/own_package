@@ -41,14 +41,14 @@ def yt_entrainment(run, wind = False):
     
 if __name__ == "__main__":
     
-    plot_mass = False
+    plot_mass = True
     
-    plot_norm_v = True
+    plot_norm_v = False
     
     #Directories
-    saveFile = 'ISM_slab/100kc-LENGTH'
-    runDir = '/raven/ptmp/ferhi/ISM_slab/100kc/'
-    RUNS = ['long_fv01e', '2long_fv01e',  'fv01e']
+    saveFile = 'ISM_slab/kc_thinslab_highres'
+    runDir = '/raven/ptmp/ferhi/ISM_thinslab/'
+    RUNS = ['fv01e','fv01_highres/']
 
     #Set to True if you would like to analyse runs without coldg mass Hst output
     NonHistFiles = False
