@@ -80,52 +80,42 @@ def project_on_plane(points, camera_view):
     return plane_coordinates
 
 
-def project_along_normal(arr, points, camera_view, assign_type="nearest", alpha=None):
+def project_along_normal(arr, points, camera_view, assign_type="nearest", alpha=None, colormap="viridis"):
     # * Project the points onto the plane
     projected_points = project_on_plane(points, camera_view)
-
+    
     origin = np.min(projected_points, axis=0)
-
     projected_points -= origin
     projected_index = projected_points.astype(int)
-
+    
     proj_size_actual = np.max(projected_index, axis=0) + 1
-    proj_size = int(np.sqrt(3) * np.max(np.shape(arr)))
-
-    projected_index += ((proj_size - proj_size_actual) / 2).astype(int)
-    projected_points += ((proj_size - proj_size_actual) / 2).astype(int).astype(float)
-
+    proj_size = int(np.sqrt(3) * np.max(arr.shape))
+    
+    offset = ((proj_size - proj_size_actual) / 2).astype(int)
+    projected_index += offset
+    projected_points += offset.astype(float)
+    
     arr_proj = np.zeros((proj_size, proj_size), dtype=float)
-
-    if alpha is None:
-        plot_arr = arr
-    else:
-        plot_arr = arr * alpha
-
+    
+    plot_arr = arr if alpha is None else arr * alpha
+    
     if assign_type == "CIC":
-        for i in range(np.shape(projected_index)[0]):
-            a = np.abs(np.round(projected_points[i, :]) - projected_points[i, :])
-            a_sign = np.sign(
-                np.round(projected_points[i, :]) - projected_points[i, :]
-            ).astype(int)
-
-            arr_proj[tuple(projected_index[i, :])] += (
-                (a[0] + 0.5) * (a[1] + 0.5) * plot_arr[tuple(points[i, :])]
-            )
-            arr_proj[
-                tuple([projected_index[i, 0] - a_sign[0], projected_index[i, 1]])
-            ] += ((0.5 - a[0]) * (a[1] + 0.5) * plot_arr[tuple(points[i, :])])
-            arr_proj[
-                tuple([projected_index[i, 0], projected_index[i, 1] - a_sign[1]])
-            ] += ((a[0] + 0.5) * (0.5 - a[1]) * plot_arr[tuple(points[i, :])])
-            arr_proj[tuple(projected_index[i, :] - a_sign)] += (
-                (0.5 - a[0]) * (0.5 - a[1]) * plot_arr[tuple(points[i, :])]
-            )
+        rounded_proj = np.round(projected_points)
+        a = np.abs(rounded_proj - projected_points)
+        a_sign = np.sign(rounded_proj - projected_points).astype(int)
+        
+        indices = projected_index.T
+        arr_proj[indices[0], indices[1]] += (a[0] + 0.5) * (a[1] + 0.5) * plot_arr[tuple(points.T)]
+        arr_proj[indices[0] - a_sign[0], indices[1]] += (0.5 - a[0]) * (a[1] + 0.5) * plot_arr[tuple(points.T)]
+        arr_proj[indices[0], indices[1] - a_sign[1]] += (a[0] + 0.5) * (0.5 - a[1]) * plot_arr[tuple(points.T)]
+        arr_proj[indices[0] - a_sign[0], indices[1] - a_sign[1]] += (0.5 - a[0]) * (0.5 - a[1]) * plot_arr[tuple(points.T)]
     elif assign_type == "nearest":
-        for i in range(np.shape(projected_index)[0]):
-            arr_proj[tuple(projected_index[i, :])] += plot_arr[tuple(points[i, :])]
-
-    return arr_proj
+        np.add.at(arr_proj, (projected_index[:, 0], projected_index[:, 1]), plot_arr[tuple(points.T)])
+    
+    # Normalize for color mapping
+    arr_proj_min, arr_proj_max = np.min(arr_proj), np.max(arr_proj)
+    norm_arr_proj = (arr_proj - arr_proj_min) / (arr_proj_max - arr_proj_min + 1e-10)
+    return norm_arr_proj
 
 
 if __name__ == "__main__":
@@ -248,7 +238,7 @@ if __name__ == "__main__":
 
 
         if fixed_time:
-            plt.savefig(f"New_renderings/rho_projection_{str(i).zfill(5)}.png", dpi=600)
+            plt.savefig(f"rho_projection_{str(i).zfill(5)}.png", dpi=600)
 
         return i
 

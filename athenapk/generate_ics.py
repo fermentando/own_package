@@ -73,7 +73,7 @@ def simulate_percolation(dimensions, p, sigma):
     return smoothed_field > threshold
 
 
-def create_ISM(filename_input='ism.in', ism_width_ratio=3.6, fv=None, n_jobs=-1):
+def create_ISM(filename_input='ism.in', ism_width_ratio=1.8, fv=None, n_jobs=-1):
     """ Generate ISM field with percolation and density fluctuations. """
     params = load_params(filename_input)
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
@@ -105,9 +105,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Generate ISM with parallel percolation.")
     parser.add_argument('--n_jobs', type=int, default=-1, help="Number of parallel jobs.")
+    parser.add_argument('-r', type=float, default=1.8, help="Width of the ISM slab in r_cloud.")
     args = parser.parse_args()
 
     localDir = os.getcwd()
     filename_input = os.path.join(localDir, 'ism.in')
-    create_ISM(filename_input=filename_input, n_jobs=args.n_jobs)
+    create_ISM(filename_input=filename_input, n_jobs=args.n_jobs, ism_width_ratio=args.r)
 

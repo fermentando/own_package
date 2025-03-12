@@ -8,6 +8,7 @@ import math
 class SingleCloudCC:
     def __init__(self, filename_input, dir):
         self.filename = filename_input
+        self.dir = dir
         self.reader = ut.AthenaPKInputFileReader(filename_input)
         self._initialize_constants()
         self._load_simulation_parameters()
@@ -148,6 +149,22 @@ class SingleCloudCC:
             self.reader.change_aspect_xlim('parthenon/mesh', f'x{i}min', rescaled_size)
             self.reader.change_aspect_xlim('parthenon/mesh', f'x{i}max', rescaled_size)
         self._enforce_cartesian_grid()
+        
+    def _return_ICs(self):
+        self._load_simulation_parameters()
+        kval = self.tcoolmix/self.tcc
+        nx2 = int(self.reader.get('parthenon/mesh', 'nx2'))
+        nx1 = int(self.reader.get('parthenon/mesh', 'nx1'))
+        nx3 = int(self.reader.get('parthenon/mesh', 'nx3'))
+        expected_shape = (nx1, nx2, nx3, 4)  
+        dtype = np.float64  
+
+        with open(os.path.join(self.dir,"ICs.bin"), "rb") as f:
+            raw_data = f.read()
+
+        # Convert bytes back to NumPy array
+        ICs = np.frombuffer(raw_data, dtype=dtype).reshape(expected_shape)
+        return ICs, kval
 
 def get_c_s(T):
     return np.sqrt(gamma * ut.constants.kb * T / mbar)

@@ -9,11 +9,12 @@ import read_hdf5 as rd
 Hist = False
 Proj = True
 # Define parameters
-baseDir = '/raven/ptmp/ferhi/ISM_thinslab/'
-savename ='thinslab_highres_Figure_2'
-vol = ['fv01_highres']  # Only one row for now
-snps = [1 , 9, 17]
+baseDir = '/raven/ptmp/ferhi/ISM_thinslab/kc/'
+savename ='fv01_3.8rcl_v2'
+vol = ['fv01_3.8rcl_v2/']  # Only one row for now
+snps = [ 15, 16, 17, 18, 19]
 vmin, vmax = 1e-26, 1e-24  # Color scale normalization
+im = None
 if Proj: 
     fig, axes = plt.subplots(nrows=len(vol), ncols=len(snps), figsize=(15, 9), gridspec_kw={'wspace': 0.03, 'hspace': 0.03})
 
@@ -27,6 +28,7 @@ if Proj:
         for j, snp in enumerate(snps):
             try:
                 snapshot = glob.glob(os.path.join(baseDir+v_i+'/out', 'parthenon.prim.'+str(snp).zfill(5)+'.phdf'))[0]
+                print(snapshot)
             except:
                 axes[i, j].axis('off')
                 continue
@@ -40,7 +42,8 @@ if Proj:
             axes[i, j].set_xticks([])
             axes[i, j].set_yticks([])
 
-            im = plot_dict['slc']
+            if snp == snps[-1]:
+                im = plot_dict['slc']
             
     
 
@@ -58,7 +61,9 @@ if Proj:
 # -------- Hist -----------#
 if Hist:
     fig, axes = plt.subplots(nrows=len(vol), ncols=len(snps), figsize=(15, 9), gridspec_kw={'wspace': 0.03, 'hspace': 0.03})
-    nbins = 50
+    # Ensure `axes` is always a 2D array (fixes single-row case)
+    if len(vol) == 1:
+        axes = np.expand_dims(axes, axis=0)
 # Ensure `axes` is always a 2D array for consistency
     for i, v_i in enumerate(vol):
         for j, snp in enumerate(snps):
@@ -79,7 +84,9 @@ if Hist:
             rho = rho[rho > 0]
 
             # Plot histogram
-            axes[i, j].hist(rho, bins=nbins, color='purple', alpha=0.7, log=True,  histtype='stepfilled')
+            # Define logarithmic bins
+            log_bins = np.logspace(np.log10(vmin), np.log10(vmax), 50)
+            axes[i, j].hist(rho, bins=log_bins, color='purple', alpha=0.7, log=True,  histtype='stepfilled')
             axes[i, j].set_xlim(vmin, vmax)
             axes[i, j].set_xscale('log')
             axes[i, j].set_yscale('log')
@@ -89,5 +96,5 @@ if Hist:
             #axes[i, j].set_yticks([])
 
     # Final adjustments
-    plt.tight_layout('thinslab_fv01_highres.png')
+    plt.tight_layout()
     plt.show()

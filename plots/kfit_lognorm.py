@@ -9,39 +9,6 @@ from adjust_ics import *
 import glob
 
 
-def load_params(filename_input):
-    reader = ut.AthenaPKInputFileReader(filename_input)
-
-    nx1 = int(reader.get('parthenon/mesh', 'nx1'))
-    nx2 = int(reader.get('parthenon/mesh', 'nx2'))
-    nx3 = int(reader.get('parthenon/mesh', 'nx3'))
-
-    xmin1 = float(reader.get('parthenon/mesh', 'x1min'))
-    xmax1 = float(reader.get('parthenon/mesh', 'x1max'))
-    xmin2 = float(reader.get('parthenon/mesh', 'x2min'))
-    xmax2 = float(reader.get('parthenon/mesh', 'x2max'))
-    xmin3 = float(reader.get('parthenon/mesh', 'x3min'))
-    xmax3 = float(reader.get('parthenon/mesh', 'x3max'))
-
-    rho_cloud = float(reader.get('problem/wtopenrun', 'rho_cloud_cgs'))
-    rho_wind = float(reader.get('problem/wtopenrun', 'rho_wind_cgs'))
-    T_wind = float(reader.get('problem/wtopenrun', 'T_wind_cgs'))
-    gamma = float(reader.get('hydro', 'gamma'))
-
-    Rcloud = float(reader.get('problem/wtopenrun', 'r0_cgs')) / float(reader.get('units', 'code_length_cgs'))
-
-
-    return {
-        'reader': reader,
-        'nx1': nx1, 'nx2': nx2, 'nx3': nx3,
-        'xmin1': xmin1, 'xmax1': xmax1,
-        'xmin2': xmin2, 'xmax2': xmax2,
-        'xmin3': xmin3, 'xmax3': xmax3,
-        'rho_cloud': rho_cloud, 'rho_wind': rho_wind,
-        'T_wind': T_wind, 'gamma': gamma,
-        'Rcloud': Rcloud
-    }
-
 
 def compute_cluster_sizes(binary_field):
     """
@@ -54,21 +21,10 @@ def compute_cluster_sizes(binary_field):
 
 def lognorm_fit(input_dir, mu_values):
 
-    # Define the expected shape and dtype (same as when saved)
 
     sim = SingleCloudCC(os.path.join(input_dir, 'ism.in'), input_dir)
-    kval = sim.tcoolmix/sim.tcc
-    params = load_params(os.path.join(input_dir, 'ism.in'))
-    expected_shape = (params['nx1'], params['nx2'], params['nx3'], 4)  # Adjust this based on your actual array
-    dtype = np.float64  # Ensure this matches the original dtype
-
-    # Read raw bytes
-    print(os.path.join(input_dir,"ICs.bin"))
-    with open(os.path.join(input_dir,"ICs.bin"), "rb") as f:
-        raw_data = f.read()
-
-    # Convert bytes back to NumPy array
-    ICs = np.frombuffer(raw_data, dtype=dtype).reshape(expected_shape)
+    params = sim.reader
+    ICs, kval = sim._return_ICs()
 
     print("Loaded ICs shape:", ICs.shape)
     
@@ -91,6 +47,8 @@ def lognorm_fit(input_dir, mu_values):
     print(f"Lognormal Fit: shape={shape:.4f}, loc={loc:.4f}, scale={scale:.4f}, mu={mu:.4f}")
     
     return r_clusters, num_bins, shape, loc, scale
+
+
 def main(input_dirs, output_file):
     mu_values = []
 
