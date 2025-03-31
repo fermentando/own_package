@@ -62,6 +62,45 @@ def generate_ICs(params, rho_field, filename='ICs.bin'):
     print(f"Saved ICs {ICs.shape} to {save_path} ({os.path.getsize(save_path)} bytes).")
     return ICs
 
+# -------- Single Cloud Generation -------- #
+def generate_sphere(filename_input, filename='ICs.bin'):
+    params = load_params(filename_input)
+    nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
+    x1min, x1max = params['x1min'], params['x1max']
+    x2min, x2max = params['x2min'], params['x2max']
+    x3min, x3max = params['x3min'], params['x3max']
+    Rcloud = params['Rcloud']
+    
+    x1 = np.linspace(x1min, x1max, nx1)
+    x2 = np.linspace(x2min, x2max, nx2)
+    x3 = np.linspace(x3min, x3max, nx3)
+    
+    X1, X2, X3 = np.meshgrid(x1, x2, x3, indexing='ij')
+    
+    # Compute the distance from the origin
+    distance = np.sqrt(X1**2 + X2**2 + X3**2)
+    
+    # Create a 3D array with values of rho_cloud and rho_empty
+    full_box_rho = np.where(distance <= Rcloud, params['rho_cloud_cgs'], params['rho_wind_cgs'])
+    
+    mom = np.zeros_like(full_box_rho)
+    en1 = 0.5 * mom**2 / full_box_rho
+    en2 = np.ones_like(mom) * params['rho_wind_cgs'] * params['T_wind_cgs'] / (params['gamma'] - 1)
+    ICs = np.stack((full_box_rho, mom, en1, en2), axis=3).astype(np.float64)
+    
+    plt.imshow(ICs[:, :, nx3 // 2, 0], cmap='viridis', norm=matplotlib.colors.LogNorm())
+    plt.colorbar()
+    plt.savefig("ICs_slice.png")
+    plt.show()
+    
+    save_path = os.path.join(localDir, filename)
+    with open(save_path, "wb") as f:
+        f.write(ICs.tobytes())
+
+    print(f"Saved ICs {ICs.shape} to {save_path} ({os.path.getsize(save_path)} bytes).")
+    return ICs
+    
+    
 # -------- Fractal ISM and Percolation Generation -------- #
 
 def simulate_percolation(dimensions, p, sigma):
@@ -73,7 +112,7 @@ def simulate_percolation(dimensions, p, sigma):
     return smoothed_field > threshold
 
 
-def create_ISM(filename_input='ism.in', ism_width_ratio=1.8, fv=None, n_jobs=-1):
+def create_ISM(filename_input='ism.in', ism_depth=1, fv=None, n_jobs=1):
     """ Generate ISM field with percolation and density fluctuations. """
     params = load_params(filename_input)
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
@@ -81,10 +120,11 @@ def create_ISM(filename_input='ism.in', ism_width_ratio=1.8, fv=None, n_jobs=-1)
     Rcloud = params['Rcloud']
     fv = fv or float(params['reader'].get('problem/wtopenrun', 'fv'))
     kin = params['reader'].get('problem/wtopenrun', 'kmin')
-    sigma = float(kin) * Rcloud / 6 / cell_size if ',' not in kin else tuple(float(k) * Rcloud / 6 / cell_size for k in kin.split(','))
+    ism_depth = params['reader'].get('problem/wtopenrun', 'depth')
+    sigma = float(kin) * Rcloud / 10 / cell_size if ',' not in kin else tuple(float(k) * Rcloud / 10 / cell_size for k in kin.split(','))
     
     print("Sigma:", sigma)
-    dimensions = (nx1, math.ceil(ism_width_ratio * Rcloud/cell_size), nx3)
+    dimensions = (nx1, math.ceil(float(ism_depth) * Rcloud/cell_size), nx3)
     
     # Parallel percolation simulation
     percolation_fields = Parallel(n_jobs=n_jobs)(delayed(simulate_percolation)(dimensions, fv, sigma) for _ in range(1))
@@ -104,11 +144,12 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Generate ISM with parallel percolation.")
-    parser.add_argument('--n_jobs', type=int, default=-1, help="Number of parallel jobs.")
-    parser.add_argument('-r', type=float, default=1.8, help="Width of the ISM slab in r_cloud.")
+    parser.add_argument('--n_jobs', type=int, default=1, help="Number of parallel jobs.")
+    parser.add_argument('-r', type=float, default=1, help="Width of the ISM slab in r_cloud.")
     args = parser.parse_args()
 
     localDir = os.getcwd()
-    filename_input = os.path.join(localDir, 'ism.in')
-    create_ISM(filename_input=filename_input, n_jobs=args.n_jobs, ism_width_ratio=args.r)
+    filename_input = os.path.join(localDir, 'cloud.in')
+    generate_sphere(filename_input=filename_input)
+    #create_ISM(filename_input=filename_input, n_jobs=args.n_jobs, ism_depth=args.r)
 

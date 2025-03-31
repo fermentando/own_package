@@ -4,13 +4,14 @@
 # Initial working directory:
 #SBATCH -D ./
 # Job name
-#SBATCH -J render_test
+#SBATCH -J mevol_plot
 #SBATCH --nodes=1         
-#SBATCH --ntasks-per-node=40    
+#SBATCH --cpus-per-task=40    # Ensure SLURM does not interfere with threading
+#SBATCH --ntasks=1         # Run 40 parallel Python instances (one per task)
 
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=fernando@mpa-garching.mpg.de
-#SBATCH --time=00:10:00
+#SBATCH --time=00:02:00
 
 
 set -e
@@ -22,7 +23,7 @@ module list
 
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
-srun python /u/ferhi/own_package/plots/render_example.py --n_jobs $SLURM_CPUS_PER_TASK
+srun python /u/ferhi/own_package/plots/mass_evolution.py $SLURM_CPUS_PER_TASK
 
 echo "Elapsed: $(($SECONDS / 3600))hrs $((($SECONDS / 60) % 60))min $(($SECONDS % 60))sec"
 

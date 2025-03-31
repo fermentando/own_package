@@ -1,6 +1,12 @@
 import numpy as np
 import read_hdf5 as hd
 from multiprocessing import Pool
+import os
+import sys
+import matplotlib.pyplot as plt
+import argparse
+from multiprocessing import cpu_count
+from matplotlib.colors import LogNorm
 
 def parallelise(fn, iter_list=None, processes=2):
     """
@@ -81,42 +87,93 @@ def project_on_plane(points, camera_view):
 
 
 def project_along_normal(arr, points, camera_view, assign_type="nearest", alpha=None, colormap="viridis"):
-    # * Project the points onto the plane
     projected_points = project_on_plane(points, camera_view)
-    
+
     origin = np.min(projected_points, axis=0)
     projected_points -= origin
     projected_index = projected_points.astype(int)
-    
+
     proj_size_actual = np.max(projected_index, axis=0) + 1
     proj_size = int(np.sqrt(3) * np.max(arr.shape))
     
     offset = ((proj_size - proj_size_actual) / 2).astype(int)
     projected_index += offset
-    projected_points += offset.astype(float)
-    
+    projected_points += offset
+
     arr_proj = np.zeros((proj_size, proj_size), dtype=float)
-    
     plot_arr = arr if alpha is None else arr * alpha
-    
+
+    point_indices = tuple(points.T)
+
     if assign_type == "CIC":
         rounded_proj = np.round(projected_points)
         a = np.abs(rounded_proj - projected_points)
         a_sign = np.sign(rounded_proj - projected_points).astype(int)
-        
-        indices = projected_index.T
-        arr_proj[indices[0], indices[1]] += (a[0] + 0.5) * (a[1] + 0.5) * plot_arr[tuple(points.T)]
-        arr_proj[indices[0] - a_sign[0], indices[1]] += (0.5 - a[0]) * (a[1] + 0.5) * plot_arr[tuple(points.T)]
-        arr_proj[indices[0], indices[1] - a_sign[1]] += (a[0] + 0.5) * (0.5 - a[1]) * plot_arr[tuple(points.T)]
-        arr_proj[indices[0] - a_sign[0], indices[1] - a_sign[1]] += (0.5 - a[0]) * (0.5 - a[1]) * plot_arr[tuple(points.T)]
-    elif assign_type == "nearest":
-        np.add.at(arr_proj, (projected_index[:, 0], projected_index[:, 1]), plot_arr[tuple(points.T)])
+
+        indices_x, indices_y = projected_index.T
+        weight = (a[0] + 0.5) * (a[1] + 0.5)
+
+        np.add.at(arr_proj, (indices_x, indices_y), weight * plot_arr[point_indices])
+        np.add.at(arr_proj, (indices_x - a_sign[0], indices_y), (0.5 - a[0]) * (a[1] + 0.5) * plot_arr[point_indices])
+        np.add.at(arr_proj, (indices_x, indices_y - a_sign[1]), (a[0] + 0.5) * (0.5 - a[1]) * plot_arr[point_indices])
+        np.add.at(arr_proj, (indices_x - a_sign[0], indices_y - a_sign[1]), (0.5 - a[0]) * (0.5 - a[1]) * plot_arr[point_indices])
     
-    # Normalize for color mapping
+    elif assign_type == "nearest":
+        np.add.at(arr_proj, (projected_index[:, 0], projected_index[:, 1]), plot_arr[point_indices])
+
+    # Normalize the projected array
     arr_proj_min, arr_proj_max = np.min(arr_proj), np.max(arr_proj)
-    norm_arr_proj = (arr_proj - arr_proj_min) / (arr_proj_max - arr_proj_min + 1e-10)
+    norm_arr_proj = (arr_proj - arr_proj_min) / (arr_proj_max - arr_proj_min + 1e-10) if arr_proj_max > arr_proj_min else arr_proj
+
     return norm_arr_proj
 
+def projection_render(args):
+    i, rho_full, alpha, theta_arr, phi = args
+    print(f"Processing frame {i}...")
+
+    rho_full = hd.read_hdf5(filename=file_path, fields=["rho", "T"])
+    rho_proj = np.copy(rho_full["rho"])
+    
+    # Apply threshold to avoid issues with log scale (set minimum to small positive value)
+    rho_proj[rho_full["T"] > 5e5] = 1e-10  # Ensures no zero values in log scale
+
+    # Project along normal
+    rho_proj = project_along_normal(
+        arr=rho_proj,  # No need to take log before this step
+        points=grid,
+        camera_view=[theta_arr[i], phi],
+        alpha=alpha,
+    )
+
+
+    # Visualization with LogNorm
+    fig, ax = plt.subplots(figsize=(10, 10))
+    img = ax.imshow(rho_proj, cmap=cr.torch, norm=LogNorm(vmin=rho_proj.min(), vmax=rho_proj.max()), interpolation='gaussian')
+
+    # Add colorbar
+    cbar = plt.colorbar(img, ax=ax)
+    cbar.set_label("Log Density Projection")
+
+    ax.set_axis_off()
+
+    # Save image
+    plt.savefig(f"rho_projection_{str(i).zfill(5)}.png", dpi=600)
+    plt.close(fig)
+
+    return i
+
+# * Transfer function
+def alpha_func(x, x_0=0.5, rate=10.0):
+    a = x - x.min()
+    a /= a.max()
+    return 1 / (1 + np.exp(rate * (x_0 - a)))
+
+# Set default number of processes
+def get_n_procs():
+    parser = argparse.ArgumentParser(description="Set the number of processors.")
+    parser.add_argument("N_procs", nargs="?", type=int, default=1, help="Number of processors to use.")
+    args = parser.parse_args()
+    return max(1, min(args.N_procs, cpu_count()))  # Ensure valid range
 
 if __name__ == "__main__":
 
@@ -125,139 +182,35 @@ if __name__ == "__main__":
     import os
     import sys
 
-    N_procs_default = 1
+    N_procs = get_n_procs()
+    print(f"N_procs set to: {N_procs} processors.")
 
-    n_arg = len(sys.argv) - 1
-    if n_arg == 0:
-        print(f"N_procs not provided...")
-        print(f"N_procs set to default: {N_procs_default} processors..")
-        N_procs = N_procs_default
-    elif n_arg == 1:
-        N_procs = int(sys.argv[1])
-        print(f"N_procs set to: {N_procs} processors..")
-    else:
-        print(f"Too many arguments provided...")
-        print(f"N_procs set to default: {N_procs_default} processors..")
-        N_procs = N_procs_default
+    # Determine package path
+    cwd = os.path.abspath(os.path.dirname(__file__))
+    package_abs_path = os.path.dirname(cwd)
 
-    cwd = os.path.dirname(__file__)
-    package_abs_path = cwd[: -len(cwd.split("/")[-1])]
-
-    # *______________________________________________* #
-    # *______________________________________________* #
-
+    # Configuration Flags
     MHD_flag = False
-
     fixed_time = True
-    
-    file_path = '/raven/ptmp/ferhi/ISM_slab/100kc/fv01e/out/parthenon.prim.00007.phdf'
 
-    # *______________________________________________* #
-    # *______________________________________________* #
+    # File Path
+    file_path = "/raven/ptmp/ferhi/ISM_slab/100kc/fv01e/out/parthenon.prim.00007.phdf"
 
+    # Define angles
     phi = np.pi / 4
-    if fixed_time:
-        theta_arr = np.linspace(2 * np.pi, 0, num=360)
-    else:
-        theta_arr = np.linspace((650 - 501) * (np.pi / 180), 0, num=(650 - 501))
+    theta_arr = np.linspace(2 * np.pi, 0, num=360) if fixed_time else np.linspace((650 - 501) * (np.pi / 180), 0, num=2)
 
+    # Read Data Once
+    rho_full = hd.read_hdf5(filename=file_path)
+    grid_shape = np.shape(rho_full["rho"])
 
-    rho_full0 = hd.read_hdf5(
-        filename=file_path
-    )
+    # Define 3D grid points
+    grid = np.indices(grid_shape).reshape(3, -1).T
 
-    # * Define some 3D points
-    grid_shape = np.shape(rho_full0['rho'])
-    grid = np.mgrid[0 : grid_shape[0], 0 : grid_shape[1], 0 : grid_shape[2]]
-
-    points = np.vstack(
-        (
-            grid[0].ravel(),
-            grid[1].ravel(),
-            grid[2].ravel(),
-        )
-    ).T
-
-    rho_full = hd.read_hdf5(
-        filename=file_path,
-    )
-
-    # def alpha_func(c_arr, log_flag=False):
-    #     return p3d.poly_alpha(c_arr, log_flag=log_flag, order=1, cut=5, alpha0=0.75)
-
-    def alpha_func(x, x_0=0.5, rate=10.0):
-        a = x - x.min()
-        a /= a.max()
-        return 1 / (1 + np.exp(rate * (x_0 - a)))
-
-    def projection_render(args):
-        i, rho_full, alpha, theta_arr, phi = args
-        print(i)
-        rho_full = hd.read_hdf5(
-            filename=file_path,
-            fields = ['rho', 'T']
-        )
-
-        rho_proj = np.copy(rho_full['rho'])
-        print(rho_proj.max(), rho_proj.min(), flush=True)
-        print('This is ratio max/min: ', rho_proj.max()/rho_proj.min(), flush=True)
-        rho_proj[rho_full['T'] > 5e5] = 0 #change this??
-
-        rho_proj = project_along_normal(
-            arr=np.log10(rho_proj),
-            # arr=alpha,
-            points=points,
-            camera_view=[theta_arr[i], phi],
-            alpha=alpha,
-        )
-        print(rho_proj.max(), rho_proj.min(), flush=True)
-        print('This is ratio max/min: ', rho_proj.max()/rho_proj.min(), flush=True)
-
-        
-        fig, ax = plt.subplots(nrows=1, ncols=1, figsize=(10, 10))
-
-        colormap = cr.torch
-
-        ax.imshow(
-            # np.log10(rho_proj),
-            rho_proj,
-            cmap=colormap,
-            interpolation="gaussian",
-            # interpolation_stage="rgba",
-            alpha=1,
-            #vmin = np.sqrt(abs(rho_proj.min()*rho_proj.max())),
-            vmin = rho_proj.min()*4,
-            #vmax=rho_proj.max(),
-        )
-        
-
-        ax.grid(False)
-        ax.set_axis_off()
-        ax.set_xticks([])
-        ax.set_yticks([])
-
-
-        if fixed_time:
-            plt.savefig(f"rho_projection_{str(i).zfill(5)}.png", dpi=600)
-
-        return i
-
+    # Prepare for parallel processing
     iter_list = [
-        (
-            i,
-            rho_full,
-            alpha_func(rho_full['rho'], x_0=0.4),
-            theta_arr,
-            phi,
-        )
+        (i, rho_full, alpha_func(rho_full["rho"], x_0=0.4), theta_arr, phi)
         for i in range(len(theta_arr))
     ]
-    processed = parallelise(
-        fn=projection_render,
-        iter_list=iter_list,
-        processes=N_procs,
-    )
 
-    # vid.make_video(
-    #     image_path="rho_projection", video_path="rho_proj", framerate=10, theme=theme
-    # )
+    processed = parallelise(fn=projection_render, iter_list=iter_list, processes=N_procs)

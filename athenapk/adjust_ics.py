@@ -67,9 +67,11 @@ class SingleCloudCC:
         xmin1, xmax1 = float(self.reader.get('parthenon/mesh', 'x1min')), float(self.reader.get('parthenon/mesh', 'x1max'))
         cell_size_y = (xmax2 - xmin2) / nx2
         cloud_to_cell_ratio = R_internal_units / cell_size_y
-        cloud_to_cell_0_1_ratio = 1/6 * R_internal_units / cell_size_y
+        cloud_to_cell_0_1_ratio = 1/10 * R_internal_units / cell_size_y
         length_y_to_cloud_ratio = (xmax2 - xmin2) / R_internal_units
         length_x_to_cloud_ratio = (xmax1 - xmin1) / R_internal_units
+        fv = float(self.reader.get('problem/wtopenrun', 'fv'))
+        depth = float(self.reader.get('problem/wtopenrun', 'depth'))
 
         print(f"""
         >> Cloud properties <<
@@ -83,6 +85,8 @@ class SingleCloudCC:
         Length_y / R_cloud = {length_y_to_cloud_ratio:.3f}
         Length_x / R_cloud = {length_x_to_cloud_ratio:.3f}
         t_coolmix / t_cc = {self.Rcrit_x_surv_ratio / self.R_cloud:.3g}
+        fv = {fv:.3g}
+        depth = {depth:.3g} rcl
         """)
 
     def reset_survival(self, ratio, rdx=8):
@@ -143,7 +147,7 @@ class SingleCloudCC:
         nx2 = int(self.reader.get('parthenon/mesh', 'nx2'))
         R_internal_units = self.R_cloud / float(self.reader.get('units', 'code_length_cgs'))
         cell_size = (xmax2 - xmin2)/nx2
-        rescaled_size = 1/6 * R_internal_units / resol_factor / cell_size
+        rescaled_size = 1/10 * R_internal_units / resol_factor / cell_size
         
         for i in [1,2,3]:
             self.reader.change_aspect_xlim('parthenon/mesh', f'x{i}min', rescaled_size)

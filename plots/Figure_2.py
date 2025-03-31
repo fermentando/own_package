@@ -9,10 +9,10 @@ import read_hdf5 as rd
 Hist = False
 Proj = True
 # Define parameters
-baseDir = '/raven/ptmp/ferhi/ISM_thinslab/kc/'
-savename ='fv01_3.8rcl_v2'
-vol = ['fv01_3.8rcl_v2/']  # Only one row for now
-snps = [ 15, 16, 17, 18, 19]
+baseDir = '/raven/ptmp/ferhi/ISM_thinslab/10kc/'
+savename ='fv01_7.6rcl'
+vol = ['fv01_7.6rcl']  # Only one row for now
+snps = [6,12,17]
 vmin, vmax = 1e-26, 1e-24  # Color scale normalization
 im = None
 if Proj: 

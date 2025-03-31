@@ -21,7 +21,7 @@ module purge
 export OMP_NUM_THREADS=1
 
 # Run the Python script with the number of CPUs
-srun python /u/ferhi/Scripts/athenapk/generate_ics.py --n_jobs $SLURM_CPUS_PER_TASK
+srun python /u/ferhi/own_package/athenapk/generate_ics.py --n_jobs $SLURM_CPUS_PER_TASK
 
 
 echo "Elapsed: $(($SECONDS / 3600))hrs $((($SECONDS / 60) % 60))min $(($SECONDS % 60))sec"
