@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt 
 import numpy as np
+from multiprocessing import Pool, cpu_count
+import argparse
 
-
+### Essentials ###
 homeDir = '/u/ferhi'
 
 fields = {
@@ -14,7 +16,7 @@ fields = {
 
 }
 
-
+### Constants ###
 class constants:
     mh = 1.660538921e-24
     uam = 1.007947 *mh #cgs
@@ -34,7 +36,7 @@ class constants:
         raise TypeError("This class is a constants container and cannot be instantiated.")
 
 
-
+### Classes ###
 class ParameterNotFoundError(Exception):
     def __init__(self, section, parameter):
         self.section = section
@@ -85,4 +87,13 @@ class AthenaPKInputFileReader:
                     f.write(f"{key} = {value}\n")
                 f.write("\n") 
 
+### Parallel io ###
+def run_parallel(runs, files, func, num_workers):
+    with Pool(processes=num_workers) as pool:
+        pool.starmap(func, [(run, file) for run in runs for file in files])
 
+def get_n_procs():
+    parser = argparse.ArgumentParser(description="Set the number of processors.")
+    parser.add_argument("N_procs", nargs="?", type=int, default=1, help="Number of processors to use.")
+    args = parser.parse_args()
+    return max(1, min(args.N_procs, cpu_count()))  

@@ -67,9 +67,9 @@ def yt_entrainment(run, wind = False):
         
         ds = yt.load(run)
         temp = ds.all_data()[('gas', 'temperature')] 
-        vels_i = ds.all_data()[('gas', 'velocity_y')]
+        vels_i = ds.all_data()[('gas', 'velocity_y')].to('km/s')
         velg = np.mean(vels_i[temp <= 1e5])        
-        velw = np.mean(vels_i[temp >=1e6])   #check number cells
+        velw = 220#np.mean(vels_i[temp >=1e6])   #check number cells
         
         
         ts = ds.current_time
@@ -82,12 +82,12 @@ if __name__ == "__main__":
     plot_norm_v = True
     
     plot_yt = True
-    plot_hst = True
+    plot_hst = False
     
-    saveFile = 'shortbox'
-    runDir = '/raven/ptmp/ferhi/Test/'
-    RUNS = ['short_box']
-
+    RUNS = [os.getcwd()]
+    print(RUNS)
+    saveFile = RUNS[0].split('/')[-1]
+    
     N_procs = get_n_procs()
     print(f"N_procs set to: {N_procs} processors.")
 
@@ -95,7 +95,8 @@ if __name__ == "__main__":
     # Execution
     #Set to True if you would like to analyse runs without coldg mass Hst output
     NonHistFiles = False
-    run_paths = np.array([os.path.join(runDir, run) for run in RUNS])
+    run_paths = RUNS
+    #run_paths = np.array([os.path.join(runDir, run) for run in RUNS])
     if False:
         run_paths = np.array([
             os.path.join(runDir, folder) 
@@ -115,7 +116,7 @@ if __name__ == "__main__":
 ]
 
     for j, run in enumerate(RUNS):
-        run_name = run.split('/')[-1]  # Get the last part of the path
+        run_name = run  # Get the last part of the path
         print(run)
                 
         sim = SingleCloudCC(os.path.join(run, 'ism.in'), dir=run)
