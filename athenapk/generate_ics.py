@@ -149,7 +149,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     localDir = os.getcwd()
-    filename_input = os.path.join(localDir, 'cloud.in')
-    generate_sphere(filename_input=filename_input)
-    #create_ISM(filename_input=filename_input, n_jobs=args.n_jobs, ism_depth=args.r)
+    filename_input = os.path.join(localDir, 'ism.in')
+    #generate_sphere(filename_input=filename_input)
+    create_ISM(filename_input=filename_input, n_jobs=args.n_jobs, ism_depth=args.r)
 

@@ -88,7 +88,7 @@ class ImageConverter:
         if len(file_list) > 0:
             ffmpeg.input(os.path.join(self.saveDir, "multiplot_%03d.png"), framerate=2).output(
                 os.path.join(self.saveDir, "multiplot.mp4")
-            ).run()
+            ).run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
 
     def process_hist(self, filename):
         """Processes a single file for histogram"""
@@ -111,7 +111,7 @@ class ImageConverter:
         if file_list:
             ffmpeg.input(os.path.join(self.saveDir, "histT_%03d.png"), framerate=2).output(
                 os.path.join(self.saveDir, f"histT_{self.generateDir.split('/')[-1]}.mp4")
-            ).run()
+            ).run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
 
 def get_n_procs():
     """Parse number of processors from command-line arguments"""

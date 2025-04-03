@@ -68,7 +68,7 @@ def plot_mass_weighted_hist(run, output_dir):
         plt.yscale('log')
         plt.title('Mass-weighted Temperature Histogram')
 
-        output_path = os.path.join(output_dir, f"mass_weighted_temperture_{index:03d}.png")
+        output_path = os.path.join(output_dir, f"mass_weighted_temperature_{index:03d}.png")
         plt.savefig(output_path)
         print('Saved to ', output_path)
         plt.close()
