@@ -98,6 +98,24 @@ def run_parallel(runs, func, num_workers, output_dir):
 
 def get_n_procs():
     parser = argparse.ArgumentParser(description="Set the number of processors.")
-    parser.add_argument("N_procs", nargs="?", type=int, default=1, help="Number of processors to use.")
+    parser.add_argument("--N_procs", nargs="?", type=int, default=1, help="Number of processors to use.")
+    parser.add_argument("single")
     args = parser.parse_args()
     return max(1, min(args.N_procs, cpu_count()))  
+
+def get_user_args(sys_argvs):
+    user_args = []
+    skip_next = False
+
+    for arg in sys_argvs[1:]:
+        if skip_next:  
+            skip_next = False  
+            continue  
+        if arg == "--N_procs":  
+            skip_next = True  # Skip the next argument as well
+            continue  
+        user_args.append(arg)
+    print("Arguments received:", sys_argvs)
+    print("user args: ", user_args)
+    
+    return user_args

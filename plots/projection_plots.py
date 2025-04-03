@@ -131,20 +131,8 @@ if __name__ == "__main__":
         num_workers=N_procs
     )
 
-    user_args = []
-    skip_next = False
+    user_args = get_user_args(sys.argv)
 
-    for arg in sys.argv[1:]:
-        if skip_next:  
-            skip_next = False  
-            continue  
-        if arg == "--N_procs":  
-            skip_next = True  # Skip the next argument as well
-            continue  
-        user_args.append(arg)
-    print("Arguments received:", sys.argv)
-    print("user args: ", user_args)
-    
     if not user_args: 
         print('Not user args') 
         sim.multiplot()

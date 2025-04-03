@@ -10,43 +10,47 @@ from multiprocessing import Pool, cpu_count
 import argparse
 
 plt.style.use('custom_plot')
-
-def hst_evolution(run, gout):
+    
+def hst_entrainment(run, vwind):
         data = np.loadtxt(os.path.join(run, 'out/parthenon.out1.hst'))
-        data = np.where(data==0, 1e-22, data)
-        norm_mass = np.log10(data[:, 10]/data[0, 10])
+        vboost = data[:, -1]
+        mass = data[:,10]
+        vx2 = abs(data[:,12])/(mass)
+        delta_v = (vwind - (vx2 + vboost))/vwind
+        print(vwind)
+        print(delta_v)
         timeseries = data[:, 0]
         
-        wgout = np.zeros_like(timeseries); cgout = wgout
-        sum = norm_mass
-        
-        if gout: 
-            wgout = np.log10(data[:, -2]/data[0, 10]) 
-            cgout = np.log10(data[:, -3]/data[0, 10])
-            sum = np.log10((data[:, 10]+data[:, -2]+data[:, -3])/data[0,10])
-        return timeseries, norm_mass, cgout, wgout, sum
+        return timeseries, delta_v
     
+def yt_entrainment(run, wind = False):
         
-def yt_coldgs(run):
         ds = yt.load(run)
         temp = ds.all_data()[('gas', 'temperature')] 
         mass = ds.all_data()[('gas', 'mass')]
-        coldg = np.sum(mass[temp <= 2e4])
-        ts = ds.current_time
+        vels_i = ds.all_data()[('gas', 'velocity_y')].to('km/s')
+        mask_hot = (temp >= 1e6)  &  (vels_i > 2)
+        mask_cold = temp <= 5e4
+        velg = np.average(vels_i[mask_cold], weights=mass[mask_cold]) if mask_cold.any() else np.nan
+        velw = np.average(vels_i[mask_hot], weights=mass[mask_hot]) if mask_hot.any() else np.nan
+        #check number cells
+        print('This is vel coldg:', velg)
+        print('And this is vel hotg: ', velw)
         
-        return ts, coldg
-
+        
+        ts = ds.current_time
+                
+        return ts, velg, velw
     
 if __name__ == "__main__":
     
-    
+
     plot_yt = False
     plot_hst = True
     
     user_args = get_user_args(sys.argv)
-    gout = True
     
-    if len(user_args) > 0:
+    if user_args:
         RUNS = [os.getcwd()]
         run_paths = RUNS
         parts = RUNS[0].split('/')
@@ -69,11 +73,11 @@ if __name__ == "__main__":
             os.makedirs(os.path.join('/u/ferhi/Figures/',parts[-2]))
 
 
-
     
     N_procs = get_n_procs()
     print(f"N_procs set to: {N_procs} processors.")
     
+
     #cmap = plt.cm.get_cmap("hsv", len(RUNS))  
     #COLOURS = [cmap(i) for i in range(len(RUNS))]
     COLOURS = [
@@ -85,7 +89,7 @@ if __name__ == "__main__":
 
     for j, run in enumerate(run_paths):
         run_name = run  # Get the last part of the path
-
+        print(run)
                 
         sim = SingleCloudCC(os.path.join(run, 'ism.in'), dir=run)
         code_time_cgs = float(sim.reader.get('units', 'code_time_cgs'))
@@ -94,41 +98,32 @@ if __name__ == "__main__":
         
         tccfact = float(sim.reader.get('problem/wtopenrun', 'depth')) if sim.tcoolmix/sim.tcc >= 0.1 else 0.1
         print(tccfact)
-        
 
-        if plot_hst:
-            try:
-                timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run, gout)
-                norm_mass = norm_mass[~np.isnan(norm_mass)]
-                timeseries = timeseries[~np.isnan(norm_mass)]
 
         
-            except:
-                continue
-            label = run.split('/')[-1]
-            plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, norm_mass, color=COLOURS[j], label = label)
-            if np.sum(cgout) > 10*len(cgout)*1e-22:
-                plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, cgout, color=COLOURS[j],  alpha = 0.5)
-            if np.sum(wgout) > 10*len(cgout)*1e-22:
-                plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, wgout, color=COLOURS[j], alpha = 0.3)
-            if (np.sum(cgout)> 10*len(cgout)*1e-22) & (np.sum(wgout)> 10*len(cgout)*1e-22):
-                plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, sum, color='black', linestyle='--', alpha = 0.3)
+        if plot_hst: 
+            code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
+            code_mass_cgs = float(sim.reader.get('units', 'code_mass_cgs'))
+            v_wind = sim.v_wind / code_length_cgs * code_time_cgs
+            times, v_normalised = hst_entrainment(run, 110)
+            plt.plot(times/sim.tcc * code_time_cgs / tccfact, v_normalised,  label=run.split('/')[-1], color=COLOURS[j])
             
+        if plot_yt:               
 
-        if plot_yt:
-            ts, coldg = run_parallel(files, func=yt_coldgs, num_workers=N_procs)
-            label = None
-            initial_mass = coldg[0]
-            label = run.split('/')[-1] + (' Hst' if 'Hst' in run else '')
-            plt.scatter(ts/sim.tcc * code_time_cgs / tccfact, np.log10(coldg/initial_mass), label=label, color=COLOURS[j])
+
+            times, vg, vw = run_parallel(files, func=yt_entrainment, num_workers=N_procs)
+            v_normalised = (vw - vg)/120
+            print('This is normalised v: ', v_normalised)
+
+            plt.scatter(times/sim.tcc * code_time_cgs / tccfact, v_normalised,  label=run.split('/')[-1], color=COLOURS[j])
             
-        plt.ylabel(r'$ log(m/m_0)$')
-        plt.ylim(bottom=-3)
+        plt.ylabel(r'$ \Delta_v /v_0$')
+        plt.ylim(top=1.2, bottom = 0)
 
 
-    print(saveFile)
+
     plt.xlabel(r't [$t_{cc, eff}$]')
-    plt.legend(loc='lower left')
+    plt.legend(loc='upper right')
     plt.tight_layout()
-    plt.savefig(f'/u/ferhi/Figures/'+saveFile+'mevol.png')
+    plt.savefig(f'/u/ferhi/Figures/'+saveFile+'vevol.png')
     plt.show()
