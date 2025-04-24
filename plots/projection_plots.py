@@ -80,7 +80,6 @@ class ImageConverter:
     def multiplot(self):
         """Runs multiplot generation in parallel"""
         file_list = np.sort(glob.glob(os.path.join(self.generateDir, "out/*prim.[0-9]*.phdf")))
-        print(file_list[0])
 
         with multiprocessing.Pool(processes=self.num_workers) as pool:
             pool.map(self.process_multiplot, file_list)
@@ -126,7 +125,7 @@ if __name__ == "__main__":
     print(f"Main directory: {SIM_DIR}, Using {N_procs} processors.")
 
     sim = ImageConverter(
-        os.path.join("/raven/ptmp/ferhi/", SIM_DIR),
+        os.path.join("/viper/ptmp/ferhi/", SIM_DIR),
         os.path.join(homeDir, "Figures", SIM_DIR),
         num_workers=N_procs
     )

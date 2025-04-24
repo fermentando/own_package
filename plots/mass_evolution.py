@@ -11,7 +11,7 @@ import argparse
 
 plt.style.use('custom_plot')
 
-def hst_evolution(run, gout):
+def hst_evolution(run, gout=False):
         data = np.loadtxt(os.path.join(run, 'out/parthenon.out1.hst'))
         data = np.where(data==0, 1e-22, data)
         norm_mass = np.log10(data[:, 10]/data[0, 10])
@@ -97,14 +97,14 @@ if __name__ == "__main__":
         
 
         if plot_hst:
+
             try:
                 timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run, gout)
                 norm_mass = norm_mass[~np.isnan(norm_mass)]
                 timeseries = timeseries[~np.isnan(norm_mass)]
-
-        
             except:
                 continue
+
             label = run.split('/')[-1]
             plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, norm_mass, color=COLOURS[j], label = label)
             if np.sum(cgout) > 10*len(cgout)*1e-22:
@@ -128,7 +128,7 @@ if __name__ == "__main__":
 
     print(saveFile)
     plt.xlabel(r't [$t_{cc, eff}$]')
-    plt.legend(loc='lower left')
+    plt.legend(loc='lower right')
     plt.tight_layout()
     plt.savefig(f'/u/ferhi/Figures/'+saveFile+'mevol.png')
     plt.show()

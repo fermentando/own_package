@@ -5,9 +5,12 @@
 #SBATCH -D ./
 # Job name
 #SBATCH -J quick_analysis
-#SBATCH --nodes=1         
-#SBATCH --cpus-per-task=40    # Ensure SLURM does not interfere with threading
-#SBATCH --ntasks=1         # Run 40 parallel Python instances (one per task)
+#
+#SBATCH --ntasks=1
+#SBATCH --constraint="apu"
+#SBATCH --gres=gpu:2
+#SBATCH --cpus-per-task=48
+#SBATCH --mem=240000
 
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=fernando@mpa-garching.mpg.de
@@ -18,7 +21,7 @@ set -e
 SECONDS=0
 
 module purge
-module load ffmpeg/4.4 cuda/12.6 
+module load ffmpeg/4.4 
 module list
 
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from multiprocessing import Pool, cpu_count
 import argparse
 
-plt.style.use('custom_plot')
+#plt.style.use('custom_plot')
     
 def hst_entrainment(run, vwind):
         data = np.loadtxt(os.path.join(run, 'out/parthenon.out1.hst'))
@@ -112,7 +112,7 @@ if __name__ == "__main__":
 
 
             times, vg, vw = run_parallel(files, func=yt_entrainment, num_workers=N_procs)
-            v_normalised = (vw - vg)/120
+            v_normalised = (vw - vg)/110
             print('This is normalised v: ', v_normalised)
 
             plt.scatter(times/sim.tcc * code_time_cgs / tccfact, v_normalised,  label=run.split('/')[-1], color=COLOURS[j])

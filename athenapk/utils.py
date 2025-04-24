@@ -2,6 +2,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from multiprocessing import Pool, cpu_count
 import argparse
+import matplotlib.pyplot as plt
+import matplotlib.style as style
+
+style.core.USER_LIBRARY_PATHS.append('custom_plot')
 
 ### Essentials ###
 homeDir = '/u/ferhi'
@@ -99,9 +103,8 @@ def run_parallel(runs, func, num_workers, output_dir):
 def get_n_procs():
     parser = argparse.ArgumentParser(description="Set the number of processors.")
     parser.add_argument("--N_procs", nargs="?", type=int, default=1, help="Number of processors to use.")
-    parser.add_argument("single")
     args = parser.parse_args()
-    return max(1, min(args.N_procs, cpu_count()))  
+    return max(1, min(args.N_procs, cpu_count()))
 
 def get_user_args(sys_argvs):
     user_args = []

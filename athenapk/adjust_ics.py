@@ -25,19 +25,27 @@ class SingleCloudCC:
 
     def _load_simulation_parameters(self):
         self.R_cloud = float(self.reader.get('problem/wtopenrun', 'r0_cgs'))
-        rho_cloud = float(self.reader.get('problem/wtopenrun', 'rho_cloud_cgs'))
-        rho_wind = float(self.reader.get('problem/wtopenrun', 'rho_wind_cgs'))
+        self.rho_cloud = float(self.reader.get('problem/wtopenrun', 'rho_cloud_cgs'))
+        self.rho_wind = float(self.reader.get('problem/wtopenrun', 'rho_wind_cgs'))
         self.T_wind = float(self.reader.get('problem/wtopenrun', 'T_wind_cgs'))
-        self.T_cloud = self.T_wind * rho_wind / rho_cloud
-        self.v_wind = self._get_wind_velocity(rho_wind, self.T_wind)
-        self.n_mix = np.sqrt(rho_wind * rho_cloud) / mbar
+        self.T_cloud = self.T_wind * self.rho_wind / self.rho_cloud
+        self.v_wind = self._get_wind_velocity()
+        self.n_mix = np.sqrt(self.rho_wind * self.rho_cloud) / mbar
 
-    def _get_wind_velocity(self, rho_wind, T_wind):
+    def _get_wind_velocity(self):
         try:
             return float(self.reader.get('problem/wtopenrun', 'v_wind_cgs'))
         except:
             Mach_wind = float(self.reader.get('problem/wtopenrun', 'Mach_wind'))
-            return np.sqrt(gamma * ut.constants.kb * T_wind / mbar) * Mach_wind
+            return np.sqrt(gamma * ut.constants.kb * self.T_wind / mbar) * Mach_wind
+    
+    def _modify_shock_mach(self):
+
+        pressure = calculate_pressure(self.T_wind, self.rho_wind, mbar = mbar)
+        mach_est = estimate_mach_from_v_wind(self.v_wind, gamma, pressure, self.rho_wind)
+        self.reader.set_('problem/wtopenrun', 'Mach_shock', mach_est)
+        print('Mach shock: ', mach_est)
+
 
     def _load_cooling_table(self, dir):
         rel_path = self.reader.get('cooling', 'table_filename')
@@ -190,22 +198,62 @@ def get_l_shatter(P):
     res = minimize_scalar(l_shatter_func, bounds=(1e4, 1e6), method='bounded')
     return res.fun, res.x
 
+import math
+
+def calculate_pressure(T, rho, mbar):
+    k_B = 1.3807e-16  # erg/K
+    m_p = 1.6726e-24  # g
+    return (rho * k_B * T) / (mbar)  # pressure in dyn/cm^2
+
+def calculate_v_wind(mach, gamma, pressure, rho_amb):
+    jump3 = 2 * (1 - 1 / mach**2) / (gamma + 1)
+    velocity_of_sound = math.sqrt(gamma * pressure / rho_amb)
+    return jump3 * mach * velocity_of_sound
+
+def estimate_mach_from_v_wind(v_wind_desired, gamma, pressure, rho_amb):
+    mach_guess = 1.0
+    tolerance = 1e-6
+    max_iter = 100
+    for j in range(max_iter):
+        current_v = calculate_v_wind(mach_guess, gamma, pressure, rho_amb)
+        if abs(current_v - v_wind_desired) < tolerance:
+            return mach_guess
+
+        delta = 1e-6
+        v_plus = calculate_v_wind(mach_guess + delta, gamma, pressure, rho_amb)
+        derivative = (v_plus - current_v) / delta
+
+        if derivative == 0:  # Avoid divide-by-zero
+            break
+
+        mach_guess -= (current_v - v_wind_desired) / derivative
+
+        if j == max_iter - 1:
+            print("Maximum number of iterations reached")
+    return mach_guess
+
+
 if __name__ == "__main__":
     
     localDir = os.getcwd()
     sim = SingleCloudCC(os.path.join(localDir, 'ism.in'), dir=localDir)
-    if str.lower(sys.argv[1]) == 'check':
-        sim.state_ICs()
-    elif str.lower(sys.argv[1]) == 'adjust':
-        print(float(sys.argv[2]))
-        sim.reset_survival(float(sys.argv[2]), 8)
-    elif str.lower(sys.argv[1]) == 'enlarge_y':
-        sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1,
+    command = str.lower(sys.argv[1])
+    match command:
+        case "check":
+            sim._modify_shock_mach()
+            sim.state_ICs()
+        case "adjust":
+            print(float(sys.argv[2]))
+            sim.reset_survival(float(sys.argv[2]), 8)
+        case "enlarge_y":
+            sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1,
                         axs=[2])
-    elif str.lower(sys.argv[1]) == 'enlarge_x':
-        sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1, 
+        case "enlarge_x":
+            sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1, 
                         axs = [1,3])
-    elif str.lower(sys.argv[1]) == 'res':
-        sim.set_rin_res(resol_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 8)
-    else:
-        raise ValueError("Invalid choice: pick amongst checking the current survival ratio, 'check', or adjusting to new ratio, 'adjust' followed by your new t_coolmix/t_cc value.")
+        case "res":
+            sim.set_rin_res(resol_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 8)
+        case "mach_shock":
+            sim._modify_shock_mach()
+        case _:
+            raise ValueError("Invalid choice: pick amongst checking the current survival ratio, 'check', or adjusting to new ratio, 'adjust' followed by your new t_coolmix/t_cc value.")

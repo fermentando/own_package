@@ -8,6 +8,7 @@ from scipy.ndimage import gaussian_filter
 import utils as ut
 import sys
 from joblib import Parallel, delayed
+from adios2 import Stream
 
 # -------- Parameter Reading and Initial Conditions Output -------- #
 
@@ -42,24 +43,28 @@ def compute_wind_velocity(params):
         return np.sqrt(gamma * ut.constants.kb * T_wind / mean_mol_mass) * Mach_wind
 
 
-def generate_ICs(params, rho_field, filename='ICs.bin'):
-    """ Generate and save initial conditions in binary format. """
+def generate_ICs(params, rho_field, filename='ICs.bp'):
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
-    full_box_rho = np.ones((nx1, nx2, nx3)) * params['rho_wind_cgs']
-    start_idx = nx2 // 10
+    full_box_rho = np.ones((nx3, nx2, nx1)) * params['rho_wind_cgs']
+    start_idx = nx2 // 10 #(nx2 - rho_field.shape[1])//2
     full_box_rho[:, start_idx:start_idx + rho_field.shape[1], :] = rho_field
     
-    print(np.shape(full_box_rho))
     mom = np.zeros_like(full_box_rho)
     en1 = 0.5 * mom**2 / full_box_rho
     en2 = np.ones_like(mom) * params['rho_wind_cgs'] * params['T_wind_cgs'] / (params['gamma'] - 1)
     ICs = np.stack((full_box_rho, mom, en1, en2), axis=3).astype(np.float64)
-
-    save_path = os.path.join(localDir, filename)
-    with open(save_path, "wb") as f:
-        f.write(ICs.tobytes())
-
-    print(f"Saved ICs {ICs.shape} to {save_path} ({os.path.getsize(save_path)} bytes).")
+    
+    saveDir = os.path.join(localDir, filename)
+    shape = ICs.shape # .tolist()
+    start = np.zeros_like(shape).tolist()
+    count = ICs.shape #.tolist()
+    nsteps = 1
+    
+    with Stream(saveDir, "w") as s:
+        for _ in s.steps(nsteps):
+            s.write(filename.split('.bp')[0], ICs, shape, start, count)
+    
+    print(f"Saved 4D array {ICs.shape} to {saveDir}. Size: {os.path.getsize(saveDir)} bytes.")
     return ICs
 
 # -------- Single Cloud Generation -------- #
