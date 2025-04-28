@@ -36,14 +36,14 @@ class SingleCloudCC:
         try:
             return float(self.reader.get('problem/wtopenrun', 'v_wind_cgs'))
         except:
-            Mach_wind = float(self.reader.get('problem/wtopenrun', 'Mach_wind'))
+            Mach_wind = float(self.reader.get('problem/wtopenrun', 'mach_wind'))
             return np.sqrt(gamma * ut.constants.kb * self.T_wind / mbar) * Mach_wind
     
     def _modify_shock_mach(self):
 
         pressure = calculate_pressure(self.T_wind, self.rho_wind, mbar = mbar)
         mach_est = estimate_mach_from_v_wind(self.v_wind, gamma, pressure, self.rho_wind)
-        self.reader.set_('problem/wtopenrun', 'Mach_shock', mach_est)
+        self.reader.set_('problem/wtopenrun', 'mach_shock', mach_est)
         print('Mach shock: ', mach_est)
 
 
