@@ -10,6 +10,72 @@ import sys
 from joblib import Parallel, delayed
 from adios2 import Stream
 
+def reassemble_blocks(block_array):
+    """
+    Reassemble a blocked array into the full global array.
+    
+    Parameters:
+      block_array: numpy array of shape (nBx, nBy, nBz, nFields, bs1, bs2, bs3)
+      
+    Returns:
+      full_array: numpy array of shape (nFields, nBx*bs1, nBy*bs2, nBz*bs3)
+    """
+    nBx, nBy, nBz, nFields, bs1, bs2, bs3 = block_array.shape
+    ICs_reordered = block_array.transpose(3,0,4,1,5,2,6)
+    ICs_full = ICs_reordered.reshape(nFields, nBx*bs1, nBy*bs2, nBz*bs3)
+    return ICs_full
+
+def gen_bin(fields, filename):
+    
+    print(len(fields))    
+    ICs = np.stack(fields, axis=3).astype(np.float64)
+    save_path = os.path.join(localDir, filename)
+    
+    with open(save_path, "wb") as f:
+       f.write(ICs.tobytes())
+    print(f"Saved ICs {ICs.shape} to {save_path} ({os.path.getsize(save_path)} bytes).")
+ 
+    return ICs
+
+def gen_adios(MeshSize, MeshBlockSize, fields, filename):
+    
+    mbl3, mbl2, mbl1 = MeshBlockSize
+    nx3, nx2, nx1 = MeshSize
+    nz_blocks, ny_blocks, nx_blocks = (int(nx3/mbl3), int(nx2/mbl2), int(nx1/mbl1))
+    x_indices, y_indices, z_indices = np.indices((nx_blocks, ny_blocks, nz_blocks))
+
+    # Flatten the indices to get the logical locations for all blocks at once
+    LogicalLocations = np.vstack((x_indices.ravel(), y_indices.ravel(), z_indices.ravel())).T
+    n_blocks = LogicalLocations.shape[0]
+
+    # Pre-allocate block data
+    block_data = np.zeros((n_blocks, len(fields), mbl3, mbl2, mbl1), dtype=np.float64)
+    
+    meshblock_fields = []
+    for meshblock_field in fields:
+        meshblock_fields.append(meshblock_field.reshape(nx_blocks, mbl3, ny_blocks, mbl2, nz_blocks, mbl1))
+
+
+    for i, (loc_x, loc_y, loc_z) in enumerate(LogicalLocations):
+        for f in range(len(fields)):
+            block_data[i, f, :, :, :] = meshblock_fields[f][loc_x, :, loc_y, :, loc_z, :]
+
+        
+    ICs = block_data.reshape(nz_blocks, ny_blocks, nx_blocks, 4, mbl3, mbl2, mbl1)
+    saveDir = os.path.join(localDir, filename)
+    shape = ICs.shape # .tolist()
+    start = np.zeros_like(shape).tolist()
+    count = ICs.shape #.tolist()
+    nsteps = 1
+    
+    with Stream(saveDir, "w") as s:
+        for _ in s.steps(nsteps):
+            s.write(filename.split('.bp')[0], ICs, shape, start, count)
+    
+    print(f"Saved 4D array {ICs.shape} to {saveDir}. Size: {os.path.getsize(saveDir)} bytes.")
+    ICs_correct = reassemble_blocks(ICs)
+    return ICs_correct.reshape(4, nx3, nx2, nx1)
+
 # -------- Parameter Reading and Initial Conditions Output -------- #
 
 def load_params(filename_input):
@@ -45,6 +111,7 @@ def compute_wind_velocity(params):
 
 def generate_ICs(params, rho_field, filename='ICs.bp'):
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
+    mbl1, mbl2, mbl3 = (int(params['reader'].get('parthenon/meshblock', f'nx{i}')) for i in range(1,4))
     full_box_rho = np.ones((nx3, nx2, nx1)) * params['rho_wind_cgs']
     start_idx = nx2 // 10 #(nx2 - rho_field.shape[1])//2
     full_box_rho[:, start_idx:start_idx + rho_field.shape[1], :] = rho_field
@@ -52,23 +119,21 @@ def generate_ICs(params, rho_field, filename='ICs.bp'):
     mom = np.zeros_like(full_box_rho)
     en1 = 0.5 * mom**2 / full_box_rho
     en2 = np.ones_like(mom) * params['rho_wind_cgs'] * params['T_wind_cgs'] / (params['gamma'] - 1)
-    ICs = np.stack((full_box_rho, mom, en1, en2), axis=3).astype(np.float64)
     
-    saveDir = os.path.join(localDir, filename)
-    shape = ICs.shape # .tolist()
-    start = np.zeros_like(shape).tolist()
-    count = ICs.shape #.tolist()
-    nsteps = 1
+    fields = (full_box_rho, mom, en1, en2)
     
-    with Stream(saveDir, "w") as s:
-        for _ in s.steps(nsteps):
-            s.write(filename.split('.bp')[0], ICs, shape, start, count)
+    MeshBlockSize = (mbl3, mbl2, mbl1)
+    MeshSize = (nx3, nx2, nx1)
     
-    print(f"Saved 4D array {ICs.shape} to {saveDir}. Size: {os.path.getsize(saveDir)} bytes.")
+    if filename.split(".")[-1] == "bin":
+        ICs = gen_bin(fields, filename)
+    elif filename.split(".")[-1] == "bp":
+        ICs = gen_adios(MeshSize, MeshBlockSize, fields, filename)
+
     return ICs
 
 # -------- Single Cloud Generation -------- #
-def generate_sphere(filename_input, filename='ICs.bin'):
+def generate_sphere(filename_input, filename):
     params = load_params(filename_input)
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
     x1min, x1max = params['x1min'], params['x1max']
@@ -136,9 +201,11 @@ def create_ISM(filename_input='ism.in', ism_depth=1, fv=None, n_jobs=1):
     percolation_field = percolation_fields[0]
 
     rho_field = np.where(percolation_field, params['rho_cloud_cgs'], params['rho_wind_cgs'])
+    
+    ics_output_file = str(params['reader'].get('job', 'bin_input_file'))
 
-    ICs = generate_ICs(params, rho_field)
-    plt.imshow(ICs[:, :, nx3 // 2, 0], cmap='viridis', norm=matplotlib.colors.LogNorm())
+    ICs = generate_ICs(params, rho_field, filename=ics_output_file)
+    plt.imshow(ICs[0, :, :, nx3 // 2], cmap='viridis', norm=matplotlib.colors.LogNorm())
     plt.colorbar()
     plt.savefig("ICs_slice.png")
     plt.show()
