@@ -12,18 +12,21 @@ import argparse
 plt.style.use('custom_plot')
 
 def hst_evolution(run, gout=False):
+        print(run)
         data = np.loadtxt(os.path.join(run, 'out/parthenon.out1.hst'))
         data = np.where(data==0, 1e-22, data)
-        norm_mass = np.log10(data[:, 10]/data[0, 10])
+        if np.shape(data)[1] >= 17: mass_ind = 11
+        else: mass_ind = 10
+        norm_mass = np.log10(data[:, mass_ind]/data[0, mass_ind])
         timeseries = data[:, 0]
         
         wgout = np.zeros_like(timeseries); cgout = wgout
         sum = norm_mass
         
         if gout: 
-            wgout = np.log10(data[:, -2]/data[0, 10]) 
-            cgout = np.log10(data[:, -3]/data[0, 10])
-            sum = np.log10((data[:, 10]+data[:, -2]+data[:, -3])/data[0,10])
+            wgout = np.log10(data[:, -2]/data[0, mass_ind]) 
+            cgout = np.log10(data[:, -3]/data[0, mass_ind])
+            sum = np.log10((data[:, mass_ind]+data[:, -2]+data[:, -3])/data[0, mass_ind])
         return timeseries, norm_mass, cgout, wgout, sum
     
         
@@ -71,7 +74,7 @@ if __name__ == "__main__":
 
 
     
-    N_procs = get_n_procs()
+    N_procs, user_args = get_n_procs_and_user_args()
     print(f"N_procs set to: {N_procs} processors.")
     
     #cmap = plt.cm.get_cmap("hsv", len(RUNS))  
@@ -90,20 +93,18 @@ if __name__ == "__main__":
         sim = SingleCloudCC(os.path.join(run, 'ism.in'), dir=run)
         code_time_cgs = float(sim.reader.get('units', 'code_time_cgs'))
         files = np.sort(glob.glob(os.path.join(run, 'out/parthenon.prim.*.phdf')))
-        print(sim.tcoolmix/sim.tcc)
         
         tccfact = float(sim.reader.get('problem/wtopenrun', 'depth')) if sim.tcoolmix/sim.tcc >= 0.1 else 0.1
-        print(tccfact)
         
 
         if plot_hst:
 
-            try:
-                timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run, gout)
-                norm_mass = norm_mass[~np.isnan(norm_mass)]
-                timeseries = timeseries[~np.isnan(norm_mass)]
-            except:
-                continue
+
+            timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run, gout)
+            mask = ~np.isnan(norm_mass)
+            norm_mass = norm_mass[mask]
+            timeseries = timeseries[mask]
+
 
             label = run.split('/')[-1]
             plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, norm_mass, color=COLOURS[j], label = label)

@@ -80,11 +80,13 @@ def read_hdf5(filename=None, fields=['rho']):
             start1 = MeshBlockSize[0] * LogicalLocations[i][0]
             end1 = start1 + MeshBlockSize[0]
 
+
             start2 = MeshBlockSize[1] * LogicalLocations[i][1]
             end2 = start2 + MeshBlockSize[1]
 
             start3 = MeshBlockSize[2] * LogicalLocations[i][2]
             end3 = start3 + MeshBlockSize[2]
+
 
             data[field][start3:end3, start2:end2, start1:end1] = raw_hdf5[field][i]
 

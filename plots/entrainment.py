@@ -14,8 +14,12 @@ import argparse
 def hst_entrainment(run, vwind):
         data = np.loadtxt(os.path.join(run, 'out/parthenon.out1.hst'))
         vboost = data[:, -1]
-        mass = data[:,10]
-        vx2 = abs(data[:,12])/(mass)
+        if np.shape(data)[1] >= 17:
+            mass = data[:,11]
+            vx2 = abs(data[:,13])/(mass)
+        else: 
+            mass = data[:,10]
+            vx2 = abs(data[:,12])/(mass)
         delta_v = (vwind - (vx2 + vboost))/vwind
         print(vwind)
         print(delta_v)

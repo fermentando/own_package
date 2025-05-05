@@ -122,3 +122,12 @@ def get_user_args(sys_argvs):
     print("user args: ", user_args)
     
     return user_args
+
+def get_n_procs_and_user_args():
+    parser = argparse.ArgumentParser(description="Set the number of processors.")
+    parser.add_argument("--N_procs", type=int, default=1, help="Number of processors to use.")
+    
+    args, remaining_args = parser.parse_known_args()
+    n_procs = max(1, min(args.N_procs, cpu_count()))
+
+    return n_procs, remaining_args

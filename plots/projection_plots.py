@@ -56,6 +56,40 @@ class ImageConverter:
         with multiprocessing.Pool(processes=self.num_workers) as pool:
             pool.starmap(self.process_file, [(filename, typefile) for filename in file_list])
 
+    def process_multiplot_density_only(self, filename):
+        """Processes a single file for multiplot"""
+        index = int(filename.split("/")[-1].split(".")[2])
+        output_path = os.path.join(self.saveDir, f"multiplot_density_{index:03d}.png")
+
+        if not os.path.exists(output_path):
+            ds = yt.load(filename)
+            left_edge, right_edge = ds.domain_left_edge, ds.domain_right_edge
+
+            y_cut = left_edge[1] + 0.5 * (right_edge[1] - left_edge[1])
+            new_center = [
+                0.5 * (left_edge[0] + right_edge[0]),
+                0.5 * (left_edge[1] + y_cut),
+                0.5 * (left_edge[2] + right_edge[2])
+            ]
+
+            region = ds.region(center=new_center,
+                            left_edge=[left_edge[0], left_edge[1], left_edge[2]],
+                    right_edge=[right_edge[0], y_cut, right_edge[2]])
+
+            proj = yt.ProjectionPlot(ds, 'z', 'density', weight_field='density', data_source=region, center = new_center)
+
+            proj.set_cmap('density', 'viridis')
+            proj.set_zlim('density', 1e-26, 1e-24)
+            colorbar = proj.plots['density'].cb
+
+            colorbar.ax.set_aspect(40)  
+            colorbar.ax.set_position([1.15, 0.1, 0.02, 0.8])  
+
+
+            proj.set_width((right_edge[0] - left_edge[0], y_cut - left_edge[1]))
+            proj.save(output_path)
+            del proj
+
     def process_multiplot(self, filename):
         """Processes a single file for multiplot"""
         index = int(filename.split("/")[-1].split(".")[2])
@@ -77,17 +111,26 @@ class ImageConverter:
             fig.tight_layout()
             fig.savefig(output_path)
 
-    def multiplot(self):
+    def multiplot(self, mode = "all"):
         """Runs multiplot generation in parallel"""
         file_list = np.sort(glob.glob(os.path.join(self.generateDir, "out/*prim.[0-9]*.phdf")))
 
         with multiprocessing.Pool(processes=self.num_workers) as pool:
+            if mode == "all":
+                pool.map(self.process_multiplot, file_list)
+            elif mode == "density":
+                pool.map(self.process_multiplot_density_only, file_list)
             pool.map(self.process_multiplot, file_list)
 
         if len(file_list) > 0:
-            ffmpeg.input(os.path.join(self.saveDir, "multiplot_%03d.png"), framerate=2).output(
-                os.path.join(self.saveDir, "multiplot.mp4")
-            ).run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+            if mode == "all":
+                ffmpeg.input(os.path.join(self.saveDir, "multiplot_%03d.png"), framerate=2).output(
+                    os.path.join(self.saveDir, "multiplot.mp4")
+                ).run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+            elif mode == "density":
+                ffmpeg.input(os.path.join(self.saveDir, "multiplot_density_%03d.png"), framerate=2).output(
+                    os.path.join(self.saveDir, "multiplot_density.mp4")
+                ).run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
 
     def process_hist(self, filename):
         """Processes a single file for histogram"""
@@ -112,15 +155,10 @@ class ImageConverter:
                 os.path.join(self.saveDir, f"histT_{self.generateDir.split('/')[-1]}.mp4")
             ).run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
 
-def get_n_procs():
-    """Parse number of processors from command-line arguments"""
-    parser = argparse.ArgumentParser(description="Set the number of processors.")
-    parser.add_argument("--N_procs", type=int, default=1, help="Number of processors to use.")  # Change to optional
-    args = parser.parse_args()
-    return max(1, min(args.N_procs, multiprocessing.cpu_count()))  # Ensure it's in a valid range
 
 if __name__ == "__main__":
-    N_procs = get_n_procs()  # Read from command-line args
+    N_procs, user_args = get_n_procs_and_user_args()
+
     SIM_DIR = os.getcwd().split('/ferhi/')[-1]
     print(f"Main directory: {SIM_DIR}, Using {N_procs} processors.")
 
@@ -130,11 +168,11 @@ if __name__ == "__main__":
         num_workers=N_procs
     )
 
-    user_args = get_user_args(sys.argv)
-
     if not user_args: 
         print('Not user args') 
         sim.multiplot()
+    elif 'density' in user_args:
+        sim.multiplot(mode='density')
     else:
         print('Else')
         sim.create(typefile=str(sys.argv[1]), mode='single', identifier=str(sys.argv[2]))

@@ -1,25 +1,16 @@
-#!/bin/sh -l
-# Standard output and error:
-#SBATCH -o ./proj.%j.log
-#SBATCH -e ./proj.%j.log
-# Initial working directory:
-#SBATCH -D ./
-# Job name
-#SBATCH -J 2quick_projections_gpu
+#!/bin/bash
+#SBATCH --job-name=cpu_job
+#SBATCH --ntasks=1
+#SBATCH --constraint="apu"
 
-# Request 1 GPU (APU if needed)
 #SBATCH --gres=gpu:2
-#SBATCH --constraint="apu"    # Remove or modify this line if a specific GPU type is not required
-
-# Resources
-#SBATCH --ntasks=2
-#SBATCH --cpus-per-task=24    # Adjust according to how many CPUs your GPU job can use efficiently
-#SBATCH --time=00:10:00        # Adjusted for longer GPU job
+#SBATCH --cpus-per-task=24
+#SBATCH --mem=240000
 
 # Email notifications
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=fernando@mpa-garching.mpg.de
-
+#SBATCH --time=00:30:00
 
 set -e
 SECONDS=0
@@ -31,7 +22,7 @@ module list
 
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
-srun python /u/ferhi/own_package/plots/projection_plots.py  --N_procs $SLURM_CPUS_PER_TASK
+srun python /u/ferhi/own_package/plots/projection_plots.py density --N_procs $SLURM_CPUS_PER_TASK
 
 echo "Elapsed: $(($SECONDS / 3600))hrs $((($SECONDS / 60) % 60))min $(($SECONDS % 60))sec"
 
