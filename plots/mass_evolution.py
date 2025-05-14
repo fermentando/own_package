@@ -13,9 +13,10 @@ plt.style.use('custom_plot')
 
 def hst_evolution(run, gout=False):
         print(run)
+        
         data = np.loadtxt(os.path.join(run, 'out/parthenon.out1.hst'))
         data = np.where(data==0, 1e-22, data)
-        if np.shape(data)[1] >= 17: mass_ind = 11
+        if np.shape(data)[1] >= 17: mass_ind = 10
         else: mass_ind = 10
         norm_mass = np.log10(data[:, mass_ind]/data[0, mass_ind])
         timeseries = data[:, 0]
@@ -46,7 +47,8 @@ if __name__ == "__main__":
     plot_yt = False
     plot_hst = True
     
-    user_args = get_user_args(sys.argv)
+    N_procs, user_args = get_n_procs_and_user_args()
+    print(f"N_procs set to: {N_procs} processors.")
     gout = True
     
     if len(user_args) > 0:
@@ -71,11 +73,6 @@ if __name__ == "__main__":
         if not os.path.exists(os.path.join('/u/ferhi/Figures/',parts[-2])): 
             os.makedirs(os.path.join('/u/ferhi/Figures/',parts[-2]))
 
-
-
-    
-    N_procs, user_args = get_n_procs_and_user_args()
-    print(f"N_procs set to: {N_procs} processors.")
     
     #cmap = plt.cm.get_cmap("hsv", len(RUNS))  
     #COLOURS = [cmap(i) for i in range(len(RUNS))]
@@ -98,8 +95,8 @@ if __name__ == "__main__":
         
 
         if plot_hst:
-
-
+            print(run)
+            if run == "/viper/ptmp2/ferhi/d3rcrit/01kc/fv03": continue
             timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run, gout)
             mask = ~np.isnan(norm_mass)
             norm_mass = norm_mass[mask]
@@ -107,6 +104,7 @@ if __name__ == "__main__":
 
 
             label = run.split('/')[-1]
+            plt.style.use('custom_plot')
             plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, norm_mass, color=COLOURS[j], label = label)
             if np.sum(cgout) > 10*len(cgout)*1e-22:
                 plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, cgout, color=COLOURS[j],  alpha = 0.5)

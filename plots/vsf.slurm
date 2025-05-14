@@ -1,6 +1,6 @@
 #!/bin/bash -l
-#SBATCH -o ./proj.%j
-#SBATCH -e ./proj.%j
+#SBATCH -o ./vsf.%j
+#SBATCH -e ./vsf.%j
 #SBATCH --job-name=vsf
 #SBATCH --constraint="apu"
 
@@ -23,7 +23,7 @@ module list
 
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
-srun python /u/ferhi/own_package/plots/projection_plots.py --N_procs $SLURM_CPUS_PER_TASK
+srun python /u/ferhi/own_package/plots/3D_vsf_hdf.py --N_procs $SLURM_CPUS_PER_TASK
 
 echo "Elapsed: $(($SECONDS / 3600))hrs $((($SECONDS / 60) % 60))min $(($SECONDS % 60))sec"
 

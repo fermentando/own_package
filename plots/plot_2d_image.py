@@ -176,7 +176,7 @@ def plot_projection(
                 "plot_2d_image.py::image_to_plot(): new_flag set to False, but fig or ax not provided..."
             )
 
-    plt.tight_layout()
+    #plt.tight_layout()
 
     L = np.shape(img_data)
     dim = len(L)
@@ -216,9 +216,10 @@ def plot_projection(
             vmax=color_range[1],
             cmap=cmap,
             **kwargs,
+            
         )
 
-    ax.set_aspect("equal")
+    ax.set_aspect("auto")
 
     plt_dict = {}
     plt_dict["fig"] = fig

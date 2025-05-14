@@ -65,7 +65,7 @@ class ImageConverter:
             ds = yt.load(filename)
             left_edge, right_edge = ds.domain_left_edge, ds.domain_right_edge
 
-            y_cut = left_edge[1] + 0.5 * (right_edge[1] - left_edge[1])
+            y_cut = left_edge[1] + 0.9 * (right_edge[1] - left_edge[1])
             new_center = [
                 0.5 * (left_edge[0] + right_edge[0]),
                 0.5 * (left_edge[1] + y_cut),

@@ -6,6 +6,7 @@ import pyFC
 import math
 from scipy.ndimage import gaussian_filter
 import utils as ut
+from adjust_ics import *
 import sys
 from joblib import Parallel, delayed
 from adios2 import Stream
@@ -61,7 +62,7 @@ def gen_adios(MeshSize, MeshBlockSize, fields, filename):
             block_data[i, f, :, :, :] = meshblock_fields[f][loc_x, :, loc_y, :, loc_z, :]
 
         
-    ICs = block_data.reshape(nz_blocks, ny_blocks, nx_blocks, 4, mbl3, mbl2, mbl1)
+    ICs = block_data.reshape(nz_blocks, ny_blocks, nx_blocks, len(fields), mbl3, mbl2, mbl1)
     saveDir = os.path.join(localDir, filename)
     shape = ICs.shape # .tolist()
     start = np.zeros_like(shape).tolist()
@@ -74,7 +75,7 @@ def gen_adios(MeshSize, MeshBlockSize, fields, filename):
     
     print(f"Saved 4D array {ICs.shape} to {saveDir}. Size: {os.path.getsize(saveDir)} bytes.")
     ICs_correct = reassemble_blocks(ICs)
-    return ICs_correct.reshape(4, nx3, nx2, nx1)
+    return ICs_correct.reshape(len(fields), nx3, nx2, nx1)
 
 # -------- Parameter Reading and Initial Conditions Output -------- #
 
@@ -84,7 +85,7 @@ def load_params(filename_input):
     mesh_keys = ['nx1', 'nx2', 'nx3', 'x1min', 'x1max', 'x2min', 'x2max', 'x3min', 'x3max']
     mesh_params = {key: float(reader.get('parthenon/mesh', key)) for key in mesh_keys}
     
-    problem_keys = ['rho_cloud_cgs', 'rho_wind_cgs', 'T_wind_cgs', 'r0_cgs']
+    problem_keys = ['rho_cloud_cgs', 'rho_wind_cgs', 'T_wind_cgs', 'r0_cgs', 'mach_shock']
     problem_params = {key: float(reader.get('problem/wtopenrun', key)) for key in problem_keys}
     
     gamma = float(reader.get('hydro', 'gamma'))
@@ -109,22 +110,55 @@ def compute_wind_velocity(params):
         return np.sqrt(gamma * ut.constants.kb * T_wind / mean_mol_mass) * Mach_wind
 
 
-def generate_ICs(params, rho_field, filename='ICs.bp'):
+def generate_ICs(params, rho_field, filename='ICs.bp', cloud_props=None):
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
     mbl1, mbl2, mbl3 = (int(params['reader'].get('parthenon/meshblock', f'nx{i}')) for i in range(1,4))
+    mbar_over_kb = cloud_props.mbar/ut.constants.kb 
+
     full_box_rho = np.ones((nx3, nx2, nx1)) * params['rho_wind_cgs']
-    start_idx = nx2 // 10 #(nx2 - rho_field.shape[1])//2
+    start_idx = 40 + 3*8 #(nx2 - rho_field.shape[1])//2
     full_box_rho[:, start_idx:start_idx + rho_field.shape[1], :] = rho_field
     
     mom = np.zeros_like(full_box_rho)
-    en1 = 0.5 * mom**2 / full_box_rho
-    en2 = np.ones_like(mom) * params['rho_wind_cgs'] * params['T_wind_cgs'] / (params['gamma'] - 1)
+    en = 0.5 * mom**2 / full_box_rho + np.ones_like(mom) * params['rho_wind_cgs'] * params['T_wind_cgs'] / (params['gamma'] - 1) /mbar_over_kb
+    #mbar = cloud_props.mbar
+    #p0 = calculate_pressure(params['T_wind_cgs'], params['rho_wind_cgs'], mbar)
+    #Bx, By, Bz = gen_magnetic_field(params, p0, full_box_rho)
+     # -- Apply inflow jump conditions to first 40 cells in y-direction --
+    gamma = params['gamma']
+    gm1 = gamma - 1
+    rho_amb = params['rho_wind_cgs']
+    T_amb = params['T_wind_cgs']
+    mach = params['mach_shock']
     
-    fields = (full_box_rho, mom, en1, en2)
+
+    # Pressure and internal energy in ambient
+    rhoe_amb = T_amb * rho_amb / (mbar_over_kb * gm1)
+    pressure = gm1 * rhoe_amb
+
+    # Rankine-Hugoniot jump conditions
+    jump1 = (gamma + 1.0) / (gm1 + 2.0 / (mach * mach))
+    jump2 = (2.0 * gamma * mach * mach - gm1) / (gamma + 1.0)
+    jump3 = 2.0 * (1.0 - 1.0 / (mach * mach)) / (gamma + 1.0)
+
+    rho_wind = rho_amb * jump1
+    pressure_wind = pressure * jump2
+    rhoe_wind = pressure_wind / gm1
+    T_wind = pressure_wind / rho_wind * mbar_over_kb
+    v_wind = jump3 * mach * np.sqrt(gamma * pressure / rho_amb)
+    mom_wind = rho_wind * v_wind
+
+    # Overwrite inflow region (first 40 cells in x2/y direction)
+    inflow_slice = slice(0, 40)
+    full_box_rho[:, inflow_slice, :] = rho_wind
+    mom[:, inflow_slice, :] = mom_wind
+    en[:, inflow_slice, :] = 0.5 * mom_wind**2 / rho_wind + rhoe_wind
+    
+    fields = (full_box_rho, mom, en)
     
     MeshBlockSize = (mbl3, mbl2, mbl1)
     MeshSize = (nx3, nx2, nx1)
-    
+
     if filename.split(".")[-1] == "bin":
         ICs = gen_bin(fields, filename)
     elif filename.split(".")[-1] == "bp":
@@ -158,10 +192,6 @@ def generate_sphere(filename_input, filename):
     en2 = np.ones_like(mom) * params['rho_wind_cgs'] * params['T_wind_cgs'] / (params['gamma'] - 1)
     ICs = np.stack((full_box_rho, mom, en1, en2), axis=3).astype(np.float64)
     
-    plt.imshow(ICs[:, :, nx3 // 2, 0], cmap='viridis', norm=matplotlib.colors.LogNorm())
-    plt.colorbar()
-    plt.savefig("ICs_slice.png")
-    plt.show()
     
     save_path = os.path.join(localDir, filename)
     with open(save_path, "wb") as f:
@@ -170,7 +200,53 @@ def generate_sphere(filename_input, filename):
     print(f"Saved ICs {ICs.shape} to {save_path} ({os.path.getsize(save_path)} bytes).")
     return ICs
     
-    
+def gen_magnetic_field(params, pressure, rho_field):
+    """ Generate a magnetic field based on the density field. """
+    nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
+    beta_in = params['beta_in']
+
+    x = np.linspace(params['x1min'], params['x1max'], nx1)
+    y = np.linspace(params['x2min'], params['x2max'], nx2)
+    z = np.linspace(params['x3min'], params['x3max'], nx3)
+    X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+
+    if beta_in is None: 
+        return np.zeros((nx3, nx2, nx1)), np.zeros((nx3, nx2, nx1)), np.zeros((nx3, nx2, nx1))
+
+    # Generate a tangled field with random vector potential
+    np.random.seed(0)
+    Ax = np.random.normal(0, 1, size=(nx3, nx2, nx1))
+    Ay = np.random.normal(0, 1, size=(nx3, nx2, nx1))
+    Az = np.random.normal(0, 1, size=(nx3, nx2, nx1))
+
+    # Compute the magnetic field B = curl A
+    def curl(Ax, Ay, Az, dx, dy, dz):
+        Bx = (np.roll(Az, -1, axis=1) - np.roll(Az, 1, axis=1)) / (2*dy) - \
+            (np.roll(Ay, -1, axis=2) - np.roll(Ay, 1, axis=2)) / (2*dz)
+        By = (np.roll(Ax, -1, axis=2) - np.roll(Ax, 1, axis=2)) / (2*dz) - \
+            (np.roll(Az, -1, axis=0) - np.roll(Az, 1, axis=0)) / (2*dx)
+        Bz = (np.roll(Ay, -1, axis=0) - np.roll(Ay, 1, axis=0)) / (2*dx) - \
+            (np.roll(Ax, -1, axis=1) - np.roll(Ax, 1, axis=1)) / (2*dy)
+        return Bx, By, Bz
+
+    dx = (params['x1max'] - params['x1min']) / nx1
+    dy = (params['x2max'] - params['x2min']) / nx2  
+    dz = (params['x3max'] - params['x3min']) / nx3
+    Bx, By, Bz = curl(Ax, Ay, Az, dx, dy, dz)
+
+    Brms2 = np.mean(Bx**2 + By**2 + Bz**2)
+    B2_target = 2.0 * pressure / beta_in
+    scale = np.sqrt(B2_target / Brms2)
+    Bx *= scale
+    By *= scale
+    Bz *= scale
+
+    mask = rho_field> 0
+    Bx[~mask] = 0
+    By[~mask] = 0
+    Bz[~mask] = 0
+        
+    return Bx, By, Bz
 # -------- Fractal ISM and Percolation Generation -------- #
 
 def simulate_percolation(dimensions, p, sigma):
@@ -185,6 +261,7 @@ def simulate_percolation(dimensions, p, sigma):
 def create_ISM(filename_input='ism.in', ism_depth=1, fv=None, n_jobs=1):
     """ Generate ISM field with percolation and density fluctuations. """
     params = load_params(filename_input)
+    cloud_props = SingleCloudCC(filename_input, os.path.abspath(os.path.join(filename_input, '..')))
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
     cell_size = (params['x2max'] - params['x2min']) / nx2
     Rcloud = params['Rcloud']
@@ -204,11 +281,15 @@ def create_ISM(filename_input='ism.in', ism_depth=1, fv=None, n_jobs=1):
     
     ics_output_file = str(params['reader'].get('job', 'bin_input_file'))
 
-    ICs = generate_ICs(params, rho_field, filename=ics_output_file)
-    plt.imshow(ICs[0, :, :, nx3 // 2], cmap='viridis', norm=matplotlib.colors.LogNorm())
-    plt.colorbar()
-    plt.savefig("ICs_slice.png")
-    plt.show()
+    ICs = generate_ICs(params, rho_field, filename=ics_output_file, cloud_props=cloud_props)
+    print(f"ICs shape: {ICs.shape}")
+    try:
+        plt.imshow(ICs[0, :, :, nx3 // 2], cmap='viridis', norm=matplotlib.colors.LogNorm())
+        plt.colorbar()
+        plt.savefig("ICs_slice.png")
+        plt.show()
+    except Exception as e:
+        print(f"Error during plotting: {e}. Maybe you have selected the wrong data type for ICs?")
 
     return percolation_field, sigma
 

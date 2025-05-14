@@ -22,6 +22,7 @@ class SingleCloudCC:
         mu_H = 1.0
         mu = 1 / (He_mass_fraction * 3 / 4 + (1 - He_mass_fraction) * 2)
         mbar = mu * ut.constants.uam
+        self.mbar = mbar
 
     def _load_simulation_parameters(self):
         self.R_cloud = float(self.reader.get('problem/wtopenrun', 'r0_cgs'))
@@ -44,6 +45,7 @@ class SingleCloudCC:
         pressure = calculate_pressure(self.T_wind, self.rho_wind, mbar = mbar)
         mach_est = estimate_mach_from_v_wind(self.v_wind, gamma, pressure, self.rho_wind)
         self.reader.set_('problem/wtopenrun', 'mach_shock', mach_est)
+        self.reader.save()
         print('Mach shock: ', mach_est)
 
 

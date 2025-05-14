@@ -106,6 +106,8 @@ if __name__ == "__main__":
 
         
         if plot_hst: 
+            plt.style.use('custom_plot')
+            if run == "/viper/ptmp2/ferhi/d3rcrit/01kc/fv03": continue
             code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
             code_mass_cgs = float(sim.reader.get('units', 'code_mass_cgs'))
             v_wind = sim.v_wind / code_length_cgs * code_time_cgs
