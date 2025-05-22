@@ -98,7 +98,13 @@ def process_file(args):
 
 def run_parallel(runs, func, num_workers, output_dir):
     with Pool(processes=num_workers) as pool:
-        pool.map(process_file, [(run, output_dir, func) for run in runs])
+        results = pool.map(process_file, [(run, output_dir, func) for run in runs])
+        
+    results = [r for r in results if r is not None]
+
+    if not results:
+        return [] 
+    return zip(*results)
 
 def get_n_procs():
     parser = argparse.ArgumentParser(description="Set the number of processors.")

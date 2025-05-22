@@ -11,40 +11,16 @@ import argparse
 
 #plt.style.use('custom_plot')
     
-def hst_entrainment(run, vwind):
+def hst_turb(run):
         data = np.loadtxt(os.path.join(run, 'out/parthenon.out1.hst'))
-        vboost = data[:, -1]
-        if np.shape(data)[1] >= 17:
-            mass = data[:,11]
-            vx2 = abs(data[:,13])/(mass)
-        else: 
-            mass = data[:,10]
-            vx2 = abs(data[:,12])/(mass)
-        delta_v = (vwind - (vx2 + vboost))/vwind
-        print(vwind)
-        print(delta_v)
+
+        mass = data[:,10]
+        vt = np.sqrt(data[:,12]*data[:,12] + data[:,14] * data[:, 14])/(mass)
         timeseries = data[:, 0]
         
-        return timeseries, delta_v
+        return timeseries, vt
     
-def yt_entrainment(run, wind = False):
-        
-        ds = yt.load(run)
-        temp = ds.all_data()[('gas', 'temperature')] 
-        mass = ds.all_data()[('gas', 'mass')]
-        vels_i = ds.all_data()[('gas', 'velocity_y')].to('km/s')
-        mask_hot = (temp >= 1e6)  &  (vels_i > 2)
-        mask_cold = temp <= 5e4
-        velg = np.average(vels_i[mask_cold], weights=mass[mask_cold]) if mask_cold.any() else np.nan
-        velw = np.average(vels_i[mask_hot], weights=mass[mask_hot]) if mask_hot.any() else np.nan
-        #check number cells
-        print('This is vel coldg:', velg)
-        print('And this is vel hotg: ', velw)
-        
-        
-        ts = ds.current_time
-                
-        return ts, velg, velw
+
     
 if __name__ == "__main__":
     
@@ -93,7 +69,7 @@ if __name__ == "__main__":
 
     for j, run in enumerate(run_paths):
         run_name = run  # Get the last part of the path
-        #if "fv02" in run: continue
+        if "fv02" in run: continue
         print(run)
                 
         sim = SingleCloudCC(os.path.join(run, 'ism.in'), dir=run)
@@ -107,31 +83,23 @@ if __name__ == "__main__":
 
 
         
-        if plot_hst: 
-            plt.style.use('custom_plot')
-            if run == "/viper/ptmp2/ferhi/d3rcrit/01kc/fv03": continue
-            code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
-            code_mass_cgs = float(sim.reader.get('units', 'code_mass_cgs'))
-            v_wind = sim.v_wind / code_length_cgs * code_time_cgs
-            times, v_normalised = hst_entrainment(run, vwind=v_wind)
-            plt.plot(times * code_time_cgs / tsh, v_normalised,  label=run.split('/')[-1], color=COLOURS[j])
-            
-        if plot_yt:               
 
-
-            times, vg, vw = run_parallel(files, func=yt_entrainment, num_workers=N_procs)
-            v_normalised = (vw - vg)/110
-            print('This is normalised v: ', v_normalised)
-
-            plt.scatter(times/sim.tcc * code_time_cgs / tccfact, v_normalised,  label=run.split('/')[-1], color=COLOURS[j])
-            
-        plt.ylabel(r'$ \Delta_v /v_0$')
-        plt.ylim(top=1.2, bottom = 0)
+        plt.style.use('custom_plot')
+        #if run == "/viper/ptmp2/ferhi/d3rcrit/01kc/fv03": continue
+        code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
+        code_mass_cgs = float(sim.reader.get('units', 'code_mass_cgs'))
+        v_wind = sim.v_wind / code_length_cgs * code_time_cgs
+        times, v_normalised = hst_turb(run)
+        plt.plot(times * code_time_cgs / tsh, v_normalised / sim.v_wind,  label=run.split('/')[-1], color=COLOURS[j])
+        
+        
+        plt.ylabel(r'$ v_{turb} [kms^{-1}$')
+        #plt.ylim(top=1.2, bottom = 0)
 
 
 
-    plt.xlabel(r't [$\tilde t_{cc} = {\scriptstyle \chi^{1/2} L_{ISM} / v_{wind}}$]')
+    plt.xlabel(r't ')
     plt.legend(loc='upper right')
     plt.tight_layout()
-    plt.savefig(f'/u/ferhi/Figures/'+saveFile+'vevol.png')
+    plt.savefig(f'/u/ferhi/Figures/'+saveFile+'vturb.png')
     plt.show()

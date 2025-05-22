@@ -8,11 +8,11 @@ from adjust_ics import *
 import matplotlib.pyplot as plt
 from multiprocessing import Pool, cpu_count
 import argparse
+from read_hdf5 import read_hdf5
 
 plt.style.use('custom_plot')
 
 def hst_evolution(run, gout=False):
-        print(run)
         
         data = np.loadtxt(os.path.join(run, 'out/parthenon.out1.hst'))
         data = np.where(data==0, 1e-22, data)
@@ -31,8 +31,8 @@ def hst_evolution(run, gout=False):
         return timeseries, norm_mass, cgout, wgout, sum
     
         
-def yt_coldgs(run):
-        ds = yt.load(run)
+def yt_coldgs(run, output_dir=None):
+        ds = yt.load(os.path.join(run, 'out'))
         temp = ds.all_data()[('gas', 'temperature')] 
         mass = ds.all_data()[('gas', 'mass')]
         coldg = np.sum(mass[temp <= 2e4])
@@ -40,6 +40,17 @@ def yt_coldgs(run):
         
         return ts, coldg
 
+def yt_coldgs_hdf(run, N_procs=1):
+        if "final" in run:
+            return -1, -1
+        print(run)
+        ds = read_hdf5(run, ['rho', 'T'], n_jobs=N_procs)
+        temp = ds['T']
+        mass = ds['rho']
+        coldg = np.sum(mass[temp <= 2e4])
+        ts = float(run.split('.')[-2]) * 0.05/10
+        
+        return ts, coldg
     
 if __name__ == "__main__":
     
@@ -84,19 +95,24 @@ if __name__ == "__main__":
 ]
 
     for j, run in enumerate(run_paths):
+        #if "30" in run: continue
         run_name = run  # Get the last part of the path
 
                 
         sim = SingleCloudCC(os.path.join(run, 'ism.in'), dir=run)
         code_time_cgs = float(sim.reader.get('units', 'code_time_cgs'))
+        code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
         files = np.sort(glob.glob(os.path.join(run, 'out/parthenon.prim.*.phdf')))
+        depth = float(sim.reader.get('problem/wtopenrun', 'depth'))
         
-        tccfact = float(sim.reader.get('problem/wtopenrun', 'depth')) if sim.tcoolmix/sim.tcc >= 0.1 else 0.1
         
-
+        tccfact =  depth if sim.tcoolmix/sim.tcc >= 0.1 else 0.1
+        tsh = 10 * sim.R_cloud * tccfact / sim.v_wind
+        
+        #if "fv01_narrow" in run: plot_hst = False; plot_yt = True
         if plot_hst:
             print(run)
-            if run == "/viper/ptmp2/ferhi/d3rcrit/01kc/fv03": continue
+            if run in  "/viper/ptmp2/ferhi/d3rcrit/01kc/fv03": continue
             timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run, gout)
             mask = ~np.isnan(norm_mass)
             norm_mass = norm_mass[mask]
@@ -105,28 +121,33 @@ if __name__ == "__main__":
 
             label = run.split('/')[-1]
             plt.style.use('custom_plot')
-            plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, norm_mass, color=COLOURS[j], label = label)
+            plt.plot(timeseries * code_time_cgs / tsh, norm_mass, color=COLOURS[j], label = label)
             if np.sum(cgout) > 10*len(cgout)*1e-22:
-                plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, cgout, color=COLOURS[j],  alpha = 0.5)
+                plt.plot(timeseries * code_time_cgs / tsh, cgout, color=COLOURS[j],  alpha = 0.5)
             if np.sum(wgout) > 10*len(cgout)*1e-22:
-                plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, wgout, color=COLOURS[j], alpha = 0.3)
+                plt.plot(timeseries * code_time_cgs / tsh, wgout, color=COLOURS[j], alpha = 0.3)
             if (np.sum(cgout)> 10*len(cgout)*1e-22) & (np.sum(wgout)> 10*len(cgout)*1e-22):
-                plt.plot(timeseries/sim.tcc * code_time_cgs / tccfact, sum, color='black', linestyle='--', alpha = 0.3)
+                plt.plot(timeseries * code_time_cgs / tsh, sum, color='black', linestyle='--', alpha = 0.3)
             
-
+        #if "fv01_narrow" in run:
         if plot_yt:
-            ts, coldg = run_parallel(files, func=yt_coldgs, num_workers=N_procs)
-            label = None
-            initial_mass = coldg[0]
-            label = run.split('/')[-1] + (' Hst' if 'Hst' in run else '')
-            plt.scatter(ts/sim.tcc * code_time_cgs / tccfact, np.log10(coldg/initial_mass), label=label, color=COLOURS[j])
-            
+            runs = glob.glob(os.path.join(run, 'out/parthenon.prim.[0-9]*.phdf'))
+            print(len(runs))
+            initial_mass = None
+            for run in runs:
+                ts, coldg = yt_coldgs_hdf(run)
+            #ts, coldg = run_parallel(runs, func=yt_coldgs_hdf, num_workers=N_procs, output_dir=None)
+                label = None
+                if initial_mass == None: initial_mass = coldg
+                label = run.split('/')[-1] + (' Hst' if 'Hst' in run else '')
+                plt.scatter(ts, np.log10(coldg/initial_mass), label=label, color='blue')
+                print(f"Cold gas mass: {np.log10(coldg/initial_mass)}")
+        plot_hst = True; plot_yt = False
         plt.ylabel(r'$ log(m/m_0)$')
-        plt.ylim(bottom=-3)
+        plt.ylim(bottom=-3, top=1.)
 
 
-    print(saveFile)
-    plt.xlabel(r't [$t_{cc, eff}$]')
+    plt.xlabel(r't [$\tilde t_{cc} = {\scriptstyle \chi^{1/2} L_{ISM} / v_{wind}}$]')
     plt.legend(loc='lower right')
     plt.tight_layout()
     plt.savefig(f'/u/ferhi/Figures/'+saveFile+'mevol.png')

@@ -9,14 +9,24 @@ import read_hdf5 as rd
 Hist = False
 Proj = True
 # Define parameters
-baseDir = '/raven/ptmp/ferhi/ISM_thinslab/10kc/'
-savename ='fv01_7.6rcl'
-vol = ['fv01_7.6rcl']  # Only one row for now
-snps = [6,12,17]
+baseDir = '/viper/ptmp/ferhi/fvLism/'
+savename ='simple_multiplot'
+vol = ['01kc/fv01_30r', '01kc/fv01_movie_2', '02kc/fv01']  # Only one row for now
+snps = [5, 47, 74]
+
+
+
 vmin, vmax = 1e-26, 1e-24  # Color scale normalization
 im = None
+subplot_width = 6.5   # width in inches per subplot
+subplot_height = 2  # height in inches per subplot
+
+fig_width = subplot_width * len(snps)
+fig_height = subplot_height * len(vol)
+
+
 if Proj: 
-    fig, axes = plt.subplots(nrows=len(vol), ncols=len(snps), figsize=(15, 9), gridspec_kw={'wspace': 0.03, 'hspace': 0.03})
+    fig, axes = plt.subplots(nrows=len(vol), ncols=len(snps), figsize=(fig_width, fig_height), gridspec_kw={'wspace': 0.05, 'hspace': 0.05})
 
     # Ensure `axes` is always a 2D array (fixes single-row case)
     if len(vol) == 1:
@@ -36,6 +46,7 @@ if Proj:
             
             #Load data and make projection
             rho = rd.read_hdf5(snapshot, fields=['rho'])['rho']
+            plt.style.use('custom_plot')
             
             plot_dict = plot_projection(rho, view_dir=2, cmap='magma_r', new_fig=False, cbar_flag = False, fig = fig, ax=axes[i, j], kwargs={'norm': norm_plot})
 
@@ -49,11 +60,13 @@ if Proj:
 
     # Colorbar setup (apply to all subplots)
     fig.subplots_adjust(right=0.8)
-    cbar_ax = fig.add_axes([0.81, 0.15, 0.02, 0.7])  # Position of the colorbar
+    cbar_ax = fig.add_axes([0.81, 0.15, 0.01, 0.7])  # Position of the colorbar
     fig.colorbar(im, cax=cbar_ax)
-    cbar_ax.tick_params(axis='y', which='both', color='white', labelcolor='black', labelsize=16, length = 6, direction='in')
-    cbar_ax.set_ylabel(r'$\rho \, [\mathrm{cm}^{-3}]$', fontsize=20)
-    plt.savefig(f'/u/ferhi/Figures/{savename}.png')
+    for spine in cbar_ax.spines.values():
+        spine.set_visible(False)
+    cbar_ax.tick_params(axis='y', which='both', color='white', direction='in')
+    cbar_ax.set_ylabel(r'$\rho \, [\mathrm{cm}^{-3}]$')
+    plt.savefig(f'/u/ferhi/Figures/{savename}.png',bbox_inches='tight')
     plt.show()
     plt.clf()
 

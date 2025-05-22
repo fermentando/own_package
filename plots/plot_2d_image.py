@@ -219,7 +219,7 @@ def plot_projection(
             
         )
 
-    ax.set_aspect("auto")
+    ax.set_aspect("equal")
 
     plt_dict = {}
     plt_dict["fig"] = fig

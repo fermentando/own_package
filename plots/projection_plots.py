@@ -120,7 +120,7 @@ class ImageConverter:
                 pool.map(self.process_multiplot, file_list)
             elif mode == "density":
                 pool.map(self.process_multiplot_density_only, file_list)
-            pool.map(self.process_multiplot, file_list)
+
 
         if len(file_list) > 0:
             if mode == "all":
@@ -128,9 +128,10 @@ class ImageConverter:
                     os.path.join(self.saveDir, "multiplot.mp4")
                 ).run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
             elif mode == "density":
-                ffmpeg.input(os.path.join(self.saveDir, "multiplot_density_%03d.png"), framerate=2).output(
+                files = glob.glob(os.path.join(self.saveDir, "multiplot_density_*.png"))
+                ffmpeg.input(os.path.join(self.saveDir, "multiplot_density_%03d.png"), framerate=len(files)//30 if len(files)//30 > 2 else 2).output(
                     os.path.join(self.saveDir, "multiplot_density.mp4")
-                ).run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
+                ).run(overwrite_output=True)#, capture_stdout=True, capture_stderr=True)
 
     def process_hist(self, filename):
         """Processes a single file for histogram"""
