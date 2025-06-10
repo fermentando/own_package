@@ -73,6 +73,7 @@ if __name__ == "__main__":
     fig, ax = plt.subplots(figsize=(8, 6))
     
     N_procs, user_args = get_n_procs_and_user_args()
+
     print(f"N_procs set to: {N_procs} processors.")
     gout = True
     
@@ -120,6 +121,7 @@ if __name__ == "__main__":
                 
         sim = SingleCloudCC(os.path.join(run, 'ism.in'), dir=run)
         code_time_cgs = float(sim.reader.get('units', 'code_time_cgs'))
+<<<<<<< HEAD
         code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
         files = np.sort(glob.glob(os.path.join(run, 'out/parthenon.prim.*.phdf')))
         depth = float(sim.reader.get('problem/wtopenrun', 'depth'))
@@ -147,6 +149,12 @@ if __name__ == "__main__":
         # Linear sum
         t_linear =  t2 
         
+=======
+        files = np.sort(glob.glob(os.path.join(run, 'parthenon.prim.*.phdf')))
+        
+        tccfact = 1#float(sim.reader.get('problem/wtopenrun', 'depth'))
+        print(tccfact)
+>>>>>>> 67e94d5 (local changes)
         
         tccfact =  depth if sim.tcoolmix/sim.tcc >= 0.1 else 0.1
 
@@ -217,8 +225,24 @@ if __name__ == "__main__":
     cbar = fig.colorbar(sm, ax=ax, pad=0.01)
     cbar.set_label(r'$L_{\mathrm{ISM}} [r_{\mathrm{cloud}}]$')
 
+<<<<<<< HEAD
     # Save and show
     print(f"Saved to: /u/ferhi/Figures/{saveFile}mevol.png")
     plt.tight_layout()
     plt.savefig(f'/u/ferhi/Figures/{saveFile}mevol.png')
     plt.show()
+=======
+<<<<<<< HEAD
+# Save and show
+plt.tight_layout()
+plt.savefig(f'/u/ferhi/Figures/{saveFile}mevol.png')
+plt.show()
+=======
+
+    plt.xlabel(r't [$t_{sh}$]')
+    plt.legend(loc='upper right')
+    plt.tight_layout()
+    plt.savefig(f'/home/fernando/Images/'+saveFile+'.png')
+    plt.show()
+>>>>>>> 67e94d5 (local changes)
+>>>>>>> d183bb3 (local changes)
