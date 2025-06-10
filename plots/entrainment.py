@@ -7,7 +7,6 @@ from utils import *
 from adjust_ics import *
 import matplotlib.pyplot as plt
 from multiprocessing import Pool, cpu_count
-import argparse
 
 #plt.style.use('custom_plot')
     
@@ -21,8 +20,6 @@ def hst_entrainment(run, vwind):
             mass = data[:,10]
             vx2 = abs(data[:,12])/(mass)
         delta_v = (vwind - (vx2 + vboost))/vwind
-        print(vwind)
-        print(delta_v)
         timeseries = data[:, 0]
         
         return timeseries, delta_v
@@ -52,9 +49,10 @@ if __name__ == "__main__":
     plot_yt = False
     plot_hst = True
     
-    user_args = get_user_args(sys.argv)
+    N_procs, user_args = get_n_procs_and_user_args()
+    print(f"N_procs set to: {N_procs} processors.")
     
-    if user_args:
+    if len(user_args) > 0:
         RUNS = [os.getcwd()]
         run_paths = RUNS
         parts = RUNS[0].split('/')
@@ -77,9 +75,8 @@ if __name__ == "__main__":
             os.makedirs(os.path.join('/u/ferhi/Figures/',parts[-2]))
 
 
+
     
-    N_procs = get_n_procs()
-    print(f"N_procs set to: {N_procs} processors.")
     
 
     #cmap = plt.cm.get_cmap("hsv", len(RUNS))  
@@ -93,18 +90,27 @@ if __name__ == "__main__":
 
     for j, run in enumerate(run_paths):
         run_name = run  # Get the last part of the path
-        #if "fv02" in run: continue
+        if "fv01_copy" in run: continue
+        if "fv02_r1e3" in run: continue
+        if "2x" in run: continue
+        if "fv02" in run: continue
+        if "4x" in run: continue
         print(run)
                 
         sim = SingleCloudCC(os.path.join(run, 'ism.in'), dir=run)
         code_time_cgs = float(sim.reader.get('units', 'code_time_cgs'))
         files = np.sort(glob.glob(os.path.join(run, 'out/parthenon.prim.*.phdf')))
         
-        depth = float(sim.reader.get('problem/wtopenrun', 'depth'))
+        depth = float(sim.reader.get('problem/wtopenrun', 'depth')) 
+        base_fv = int(run.split('fv')[-1][:2])
+        fv = 10 ** (-base_fv)
+        print(fv)
+        
         
         tccfact =  depth if sim.tcoolmix/sim.tcc >= 0.1 else 0.1
-        tsh = 10 * sim.R_cloud * tccfact / sim.v_wind
-
+        transversing =  sim.R_cloud / sim.v_wind
+        tsh =   np.sqrt(100 * fv**-0.6 + 1)* 0.1 * sim.R_cloud  / sim.v_wind  #* ( 1 + base_fv ** 2 )
+        tsh =  20 * (fv**-0.3333 + 10) * 0.1 * sim.R_cloud / sim.v_wind  # 10 * fv**-0.6 * sim.R_cloud / sim.v_wind
 
         
         if plot_hst: 
@@ -114,7 +120,7 @@ if __name__ == "__main__":
             code_mass_cgs = float(sim.reader.get('units', 'code_mass_cgs'))
             v_wind = sim.v_wind / code_length_cgs * code_time_cgs
             times, v_normalised = hst_entrainment(run, vwind=v_wind)
-            plt.plot(times * code_time_cgs / tsh, v_normalised,  label=run.split('/')[-1], color=COLOURS[j])
+            plt.plot((times * code_time_cgs - transversing) / tsh, v_normalised,  label=run.split('/')[-1], color=COLOURS[j])
             
         if plot_yt:               
 

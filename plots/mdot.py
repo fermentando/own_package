@@ -9,20 +9,8 @@ import matplotlib.pyplot as plt
 from multiprocessing import Pool, cpu_count
 import argparse
 from read_hdf5 import read_hdf5
-import seaborn as sns
-from matplotlib.cm import ScalarMappable
-from matplotlib.lines import Line2D
-import matplotlib.colors as mcolors
-
-
-# Set up a colormap using seaborn
-cmap = sns.color_palette("mako", as_cmap=True)  # or "magma", "plasma", etc.
-norm = mcolors.LogNorm(vmin=1, vmax=1000)  # Log scale if range is wide
-sm = ScalarMappable(cmap=cmap, norm=norm)
-sm.set_array([])
 
 plt.style.use('custom_plot')
-linestyles = {1:'-', 0:'--', 3:'-.', 2:':'}
 
 def hst_evolution(run, gout=False):
         
@@ -30,16 +18,16 @@ def hst_evolution(run, gout=False):
         data = np.where(data==0, 1e-22, data)
         if np.shape(data)[1] >= 17: mass_ind = 10
         else: mass_ind = 10
-        norm_mass = np.log10(data[:, mass_ind]/data[0, mass_ind])
+        norm_mass = data[:, mass_ind]/data[0, mass_ind]
         timeseries = data[:, 0]
         
         wgout = np.zeros_like(timeseries); cgout = wgout
         sum = norm_mass
         
         if gout: 
-            wgout = np.log10(data[:, -2]/data[0, mass_ind]) 
-            cgout = np.log10(data[:, -3]/data[0, mass_ind])
-            sum = np.log10((data[:, mass_ind]+data[:, -2]+data[:, -3])/data[0, mass_ind])
+            wgout = data[:, -2]/data[0, mass_ind]
+            cgout = data[:, -3]/data[0, mass_ind]
+            sum = (data[:, mass_ind]+data[:, -2]+data[:, -3])/data[0, mass_ind]
         return timeseries, norm_mass, cgout, wgout, sum
     
         
@@ -69,8 +57,6 @@ if __name__ == "__main__":
     
     plot_yt = False
     plot_hst = True
-
-    fig, ax = plt.subplots(figsize=(8, 6))
     
     N_procs, user_args = get_n_procs_and_user_args()
     print(f"N_procs set to: {N_procs} processors.")
@@ -114,7 +100,7 @@ if __name__ == "__main__":
         if "fv01_copy" in run: continue
         if "fv02_r1e3" in run: continue
         if "2x" in run: continue
-
+        if "fv02" in run: continue
         if "4x" in run: continue
 
                 
@@ -123,42 +109,38 @@ if __name__ == "__main__":
         code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
         files = np.sort(glob.glob(os.path.join(run, 'out/parthenon.prim.*.phdf')))
         depth = float(sim.reader.get('problem/wtopenrun', 'depth'))
-        try:
-            fv = float(sim.reader.get('problem/wtopenrun', 'fv'))
-            base_fv = int(-np.log10(fv))
-        except:
-            base_fv = int(run.split('fv')[-1][:2])
-            fv = 10 ** (-base_fv)
+        base_fv = int(run.split('fv')[-1][:2])
+        fv = 10 ** (-base_fv)
         
         
         tccfact =  depth if sim.tcoolmix/sim.tcc >= 0.1 else 0.1
         tsh =  (10* fv * sim.R_cloud + (1-fv)*fv**-0.3*sim.R_cloud) * tccfact  / sim.v_wind #np.sqrt( fv**-0.6 + 100)
-        tsh =  20 * (fv**-0.3 + 100) * 0.1 * sim.R_cloud / sim.v_wind
+        tsh =  20 * (fv**-0.3 + 10) * 0.1 * sim.R_cloud / sim.v_wind
         
         #if "fv01_narrow" in run: plot_hst = False; plot_yt = True
         #if "v02" in run: continue
         if plot_hst:
             print(run)
             #if run in  "/viper/ptmp2/ferhi/d3rcrit/01kc/fv03": continue
-            try:
-                timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run, gout)
-            except Exception as e:
-                 continue
+            timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run, gout)
             mask = ~np.isnan(norm_mass)
-            norm_mass = norm_mass[mask]
-            timeseries = timeseries[mask]
-            color = sm.to_rgba(tccfact)
+            mass_growth_rate = np.gradient(norm_mass, timeseries)  # in code units
+            mass_growth_rate_phys = mass_growth_rate * code_time_cgs / tsh  # physical units
 
+            # Mask negative growth rates
+            positive_growth_rate = np.where(mass_growth_rate_phys > 0, mass_growth_rate_phys, np.nan)
 
-            label = run.split('/')[-1]
+            # Plot only the positive parts of the growth rate
             plt.style.use('custom_plot')
-            ax.plot(timeseries * code_time_cgs / tsh, norm_mass, color=color, linestyle=linestyles[base_fv], alpha=0.8)
+            label = run.split('/')[-1]
+            plt.plot(timeseries * code_time_cgs / tsh, positive_growth_rate, color=COLOURS[j], label=label)
+
             if np.sum(cgout) > 10*len(cgout)*1e-22:
-                ax.plot(timeseries * code_time_cgs / tsh, cgout, color=COLOURS[j],  alpha = 0.5)
+                plt.plot(timeseries * code_time_cgs / tsh, cgout, color=COLOURS[j],  alpha = 0.5)
             if np.sum(wgout) > 10*len(cgout)*1e-22:
-                ax.plot(timeseries * code_time_cgs / tsh, wgout, color=COLOURS[j], alpha = 0.3)
+                plt.plot(timeseries * code_time_cgs / tsh, wgout, color=COLOURS[j], alpha = 0.3)
             if (np.sum(cgout)> 10*len(cgout)*1e-22) & (np.sum(wgout)> 10*len(cgout)*1e-22):
-                ax.plot(timeseries * code_time_cgs / tsh, sum, color='black', linestyle='--', alpha = 0.3)
+                plt.plot(timeseries * code_time_cgs / tsh, sum, color='black', linestyle='--', alpha = 0.3)
             
         #if "fv01_narrow" in run:
         if plot_yt:
@@ -174,29 +156,14 @@ if __name__ == "__main__":
                 plt.scatter(ts, np.log10(coldg/initial_mass), label=label, color='blue')
                 print(f"Cold gas mass: {np.log10(coldg/initial_mass)}")
         plot_hst = True; plot_yt = False
-linestyles = {1:'-', 0:'--', 3:'-.', 2:':'}
+        plt.ylabel(r'$ log(m/m_0)$')
+        plt.yscale('log')
+        plt.ylim(bottom=1e-4)
 
-fv_legend_elements = [
-    Line2D([0], [0], color='black', linestyle='-', label=r'$f_v = 10^{\mathrm{-1}}$'),
-    Line2D([0], [0], color='black', linestyle=':', label=r'$f_v = 10^{\mathrm{-2}}$'),
-    Line2D([0], [0], color='black', linestyle='-.', label=r'$f_v = 10^{\mathrm{-3}}$'),
-]
 
-# Add to plot
-legend1 = ax.legend(
-    handles=fv_legend_elements,
-    loc='upper center',
-    ncol=3,
-)
-ax.add_artist(legend1) 
-ax.set_ylabel(r'$log(m/m_0)$')
-ax.set_xlabel(r't [$\tilde t_{cc} $]')
-ax.set_ylim(bottom=-3, top=1.)
 
-cbar = fig.colorbar(sm, ax=ax, pad=0.01)
-cbar.set_label(r'$L_{\mathrm{ISM}} [r_{\mathrm{cloud}}]$')
-
-# Save and show
-plt.tight_layout()
-plt.savefig(f'/u/ferhi/Figures/{saveFile}mevol.png')
-plt.show()
+    plt.xlabel(r't [$\tilde t_{cc} = {\scriptstyle \chi^{1/2} L_{ISM} / v_{wind}}$]')
+    plt.legend(loc='lower right')
+    plt.tight_layout()
+    plt.savefig(f'/u/ferhi/Figures/'+saveFile+'mdot.png')
+    plt.show()

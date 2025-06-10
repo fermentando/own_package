@@ -90,22 +90,22 @@ def project_velocity(data, bins):
 
     # Create 3D histograms for velocity components and Halpha weighting
     hist_vx, _, _, _ = np.histogram2d(x, y, bins=(bins, bins), weights=vx)
-    hist_vy, _, _, _ = np.histogram2d(x, z, bins=(bins, bins), weights=vy)
+    #hist_vy, _, _, _ = np.histogram2d(x, z, bins=(bins, bins), weights=vy)
     hist_vz, _, _, _ = np.histogram2d(y, z, bins=(bins, bins), weights=vz)
     hist_Halpha, _, _, _ = np.histogram2d(x, y, bins=(bins, bins), weights=Halpha)
     
     # Calculate the projected velocities for vx, vy, vz
     projected_vx = np.divide(hist_vx, hist_Halpha, where=hist_Halpha > 0)
-    projected_vy = np.divide(hist_vy, hist_Halpha, where=hist_Halpha > 0)
+    #projected_vy = np.divide(hist_vy, hist_Halpha, where=hist_Halpha > 0)
     projected_vz = np.divide(hist_vz, hist_Halpha, where=hist_Halpha > 0)
 
     # Handle cases where there is no data
     projected_vx[hist_Halpha == 0] = np.nan
-    projected_vy[hist_Halpha == 0] = np.nan
+    #projected_vy[hist_Halpha == 0] = np.nan
     projected_vz[hist_Halpha == 0] = np.nan
     
     # Combine the velocities into one 3D array (stack the components)
-    projected_velocity = np.stack((projected_vx, projected_vy, projected_vz), axis=-1)
+    projected_velocity = np.stack((projected_vx, projected_vz), axis=-1)
     
     return projected_velocity
 
@@ -121,7 +121,7 @@ def generate_flat(vx_image, bins):
     
     # Flatten the arrays into 1D vectors
     flat_x = flat_x.ravel()
-    flat_y = flat_y.ravel()
+    #flat_y = flat_y.ravel()
     flat_z = flat_z.ravel()
     
     # Ensure the number of elements in vx_image matches the flattened grid size
@@ -134,11 +134,11 @@ def generate_flat(vx_image, bins):
     
     # Apply the mask to get valid values
     x_values = flat_x[mask]
-    y_values = flat_y[mask]
+    #y_values = flat_y[mask]
     z_values = flat_z[mask]
     vx_values = flat_vx[mask]
     
-    return x_values, y_values, z_values, vx_values
+    return x_values, z_values, vx_values
 
 
 def determine_n_ij(data, max_n_ij=None):
@@ -205,12 +205,12 @@ if False:
                     counts[bin_idx] += 1
 
 else: 
-    def compute_vsf(x, y, z, vx, vy, vz, bins_edges, vsf, counts):
+    def compute_vsf(x, y, z, vx, vz, bins_edges, vsf, counts):
         sample_size = min(10000, len(x))  # Take the minimum between 10000 and the actual population size
         idx = np.random.choice(len(x), size=sample_size, replace=False)
-        x, y, z, vx, vy, vz = x[idx], y[idx], z[idx], vx[idx], vy[idx], vz[idx]
+        x, y, z, vx, vz = x[idx], y[idx], z[idx], vx[idx],  vz[idx]
         coords = np.column_stack((x, y, z))
-        vels = np.column_stack((vx, vy, vz))
+        vels = np.column_stack((vx, vz))
     
         tree = cKDTree(coords)
         pairs = tree.query_pairs(r=bins_edges[-1], output_type='ndarray')
@@ -234,8 +234,8 @@ def generate_vsf(data, dx, stand_l, outname, min_pairs=3):
     vsf = np.zeros(len(bin_edges) - 1)
     counts = np.zeros_like(vsf)
     x, y, z = data['x'], data['y'], data['z']
-    vx, vy, vz = data['vx'], data['vy'], data['vz']
-    compute_vsf(x, y, z, vx, vy, vz, bin_edges, vsf, counts)
+    vx, vz = data['vx'], data['vz']
+    compute_vsf(x, y, z, vx, vz, bin_edges, vsf, counts)
     #vsf /= np.where(counts > 0, counts, 1)
         # Avoid division by zero
     with np.errstate(divide='ignore', invalid='ignore'):
@@ -243,6 +243,8 @@ def generate_vsf(data, dx, stand_l, outname, min_pairs=3):
 
     # Mask low-count bins
     vsf = np.where(counts >= min_pairs, vsf, np.nan)
+    # Add correction factor for isotropic scaling
+    vsf *= 1.5
     np.savez_compressed(outname, vsf=vsf, log_centers=log_centers)
 
     plt.style.use('custom_plot')
@@ -296,12 +298,12 @@ def process_run(infile, stand_l, mbar, outdir):
     #try:
     print(infile)
     idx = infile.split('/')[-1].split('.')[-2]
-    outfile = os.path.join(outdir, f"3d_vsf_{str(int(idx)).zfill(3)}")
+    outfile = os.path.join(outdir, f"noy3D_vsf_{str(int(idx)).zfill(3)}")
     if os.path.exists(outfile + '.png'):
         print(f"[✓] Skipping {outfile}, already exists.")
         return
 
-    data, dx = load_cold_gas_region_and_fields(infile, mbar, n_jobs = 4)
+    data, dx = load_cold_gas_region_and_fields(infile, mbar, n_jobs = 1)
     print("File has been read.")
     generate_vsf(data, dx, stand_l, outfile)
     print(f"[✓] VSF generated: {outfile}")
@@ -313,7 +315,7 @@ def run_all_parallel(run_list, stand_l, mbar, outdir, n_procs):
     os.makedirs(outdir, exist_ok=True)
     
     # Use joblib to parallelize process_run for each file
-    Parallel(n_jobs=(n_procs//4))(
+    Parallel(n_jobs=(n_procs//1))(
         delayed(process_run)(infile, stand_l, mbar, outdir)
         for infile in run_list
     )
@@ -325,7 +327,7 @@ if __name__ == "__main__":
     print(f"N_procs set to: {N_procs} processors.")
 
     
-    if len(user_args) == 0:
+    if True: #len(user_args) == 0:
         RUNS = [os.getcwd()]
         run_paths = RUNS
         parts = RUNS[0].split('/')
@@ -335,7 +337,7 @@ if __name__ == "__main__":
             os.makedirs(os.path.join('/u/ferhi/Figures/velocity_structure_function/',f"{parts[-3]}/{parts[-2]}"))
 
 
-    else:
+    if False:
         runDir = os.getcwd()
         run_paths = np.array([
             os.path.join(runDir, folder) 

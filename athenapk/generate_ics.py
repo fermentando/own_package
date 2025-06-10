@@ -257,6 +257,17 @@ def simulate_percolation(dimensions, p, sigma):
     threshold = np.percentile(smoothed_field, 100 * (1 - p))
     return smoothed_field > threshold
 
+def compute_p_values(sigmas, p_init):
+    """ Compute p values for different sigmas. """
+    sigmas_new = sorted(sigmas.copy())
+    s0 = min(sigmas)
+    p_values = []
+
+    for sigma in sigmas_new:
+        print("sigma:", sigma)
+        p_values.append(p_init * (s0 / sigma) ** 3.)
+    return p_values, sigmas_new
+
 
 def create_ISM(filename_input='ism.in', ism_depth=1, fv=None, n_jobs=1):
     """ Generate ISM field with percolation and density fluctuations. """
@@ -274,8 +285,19 @@ def create_ISM(filename_input='ism.in', ism_depth=1, fv=None, n_jobs=1):
     dimensions = (nx1, math.ceil(float(ism_depth) * Rcloud/cell_size), nx3)
     
     # Parallel percolation simulation
-    percolation_fields = Parallel(n_jobs=n_jobs)(delayed(simulate_percolation)(dimensions, fv, sigma) for _ in range(1))
-    percolation_field = percolation_fields[0]
+    if ',' not in kin:
+        percolation_fields = Parallel(n_jobs=n_jobs)(delayed(simulate_percolation)(dimensions, fv, sigma) for _ in range(1))
+        percolation_field = percolation_fields[0]
+        
+    if ',' in kin:
+        sigmas = list(np.linspace(sigma[0], sigma[1], 40))
+        p_values, sprime = compute_p_values(sigmas, fv)
+        print("p_values:", p_values)
+        print("sigmas:", sprime)
+
+        buffers = Parallel(n_jobs=n_jobs)(delayed(simulate_percolation)(dimensions, p, s_sigma) for p,s_sigma in zip(p_values,sprime))
+        percolation_field = np.sum(buffers, axis=0) > 0
+
 
     rho_field = np.where(percolation_field, params['rho_cloud_cgs'], params['rho_wind_cgs'])
     

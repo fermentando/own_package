@@ -7,21 +7,53 @@ import matplotlib.pyplot as plt
 from read_hdf5 import read_hdf5  
 from joblib import Parallel, delayed
 
+def make_periodic(array, periodic_axes=(0, 2)):
+    """
+    Extend the array to be periodic along the specified axes.
+    For each axis in periodic_axes, wrap the array by 1 cell on both sides.
+    """
+    slices = []
+    for axis in range(array.ndim):
+        if axis in periodic_axes:
+            # Take last and first slices along this axis
+            slc = [slice(None)] * array.ndim
+            slc[axis] = -1
+            left = array[tuple(slc)]
+            slc[axis] = 0
+            right = array[tuple(slc)]
+            # Stack: [last, array, first] along this axis
+            array = np.concatenate([left[np.newaxis], array, right[np.newaxis]], axis=axis)
+        else:
+            # No change for non-periodic axes
+            continue
+    return array
+
 def clump_cumulative_distribution(binary_field):
     """
     Given a binary field (e.g., final_percolation), return the cumulative number of clumps (N(>V))
     for clump sizes equal to or above the value.
     """
     labeled_array, _ = label(binary_field)
+    # Make periodic in x (axis=0) and z (axis=2)
+    edge_labels = set()
+
+    # Collect labels on the left and right edges
+    edge_labels.update(np.unique(labeled_array[:, 0]))
+    edge_labels.update(np.unique(labeled_array[:, -1]))
+
+    # Collect labels on the top and bottom edges
+    edge_labels.update(np.unique(labeled_array[0, :]))
+    edge_labels.update(np.unique(labeled_array[-1, :]))
+
     clump_sizes = np.bincount(labeled_array.ravel())[1:]  # exclude background
     sorted_sizes = np.sort(clump_sizes)[::-1]
     cumulative_counts = np.arange(1, len(sorted_sizes) + 1)  # cumulative number of clumps
     return sorted_sizes, cumulative_counts
 
-
 def process_density_and_plot(filepath, outdir, n_jobs=4):
     data = read_hdf5(filepath, n_jobs=n_jobs)
     density = data['rho'] 
+    print("The data has been read")
 
     binary_field = (density > 1e-25)
     volumes, _ = clump_cumulative_distribution(binary_field)
@@ -55,7 +87,7 @@ def process_density_and_plot(filepath, outdir, n_jobs=4):
 
 def run_all_parallel(run_list, outdir, n_procs):
     os.makedirs(outdir, exist_ok=True)
-    Parallel(n_jobs=n_procs//4)(
+    Parallel(n_jobs=max(1,n_procs//4))(
         delayed(process_density_and_plot)(run, outdir)
         for run in run_list
     )
@@ -97,5 +129,6 @@ if __name__ == "__main__":
 
     full_output_dir = os.path.join('/u/ferhi/Figures/clump_distribution/', saveFile)
     os.makedirs(full_output_dir, exist_ok=True)
+
 
     run_all_parallel(single_file_paths, outdir=full_output_dir, n_procs=N_procs)

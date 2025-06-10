@@ -2,7 +2,7 @@ import h5py
 import numpy as np
 from joblib import Parallel, delayed
 import numpy as np
-import h5pickle as h5py
+#import h5pickle as h5py
 import utils as ut
 import os
 import concurrent.futures
@@ -57,50 +57,69 @@ def read_hdf5(filename=None, fields=['rho'], n_jobs=1):
         data['x2'] = Y.transpose(2, 1, 0) * code_units_length
         data['x3'] = Z.transpose(2, 1, 0) * code_units_length
 
-        def process_block(i, LogicalLocations, MeshBlockSize, prim, code_units_rho, code_units_vel, fields):
-            lx, ly, lz = LogicalLocations[i]
-            mbl3, mbl2, mbl1 = MeshBlockSize
-            start1 = mbl1 * lx
-            start2 = mbl2 * ly
-            start3 = mbl3 * lz
-            end1 = start1 + mbl1
-            end2 = start2 + mbl2
-            end3 = start3 + mbl3
+        def process_blocks(block_indices, filename, LogicalLocations, MeshBlockSize, code_units_rho, code_units_vel, fields):
+            with h5py.File(filename, "r") as f:
+                prim = f["prim"]
+                results = []
+                for i in block_indices:
+                    lx, ly, lz = LogicalLocations[i]
+                    mbl3, mbl2, mbl1 = MeshBlockSize
+                    start1 = mbl1 * lx
+                    start2 = mbl2 * ly
+                    start3 = mbl3 * lz
+                    end1 = start1 + mbl1
+                    end2 = start2 + mbl2
+                    end3 = start3 + mbl3
 
-            # Handle different fields
-            blocks = {}
-            for field in fields:
-                try:
-                    if field == 'rho':
-                        block = prim[i, 0, :, :, :] * code_units_rho
-                    elif field == 'prs':
-                        block = prim[i, 4, :, :, :] * code_units_rho * code_units_vel**2
-                    elif field == 'vel1':
-                        block = prim[i, 1, :, :, :] * code_units_vel
-                    elif field == 'vel2':
-                        block = prim[i, 2, :, :, :] * code_units_vel
-                    elif field == 'vel3':
-                        block = prim[i, 3, :, :, :] * code_units_vel
-                    elif field == 'T':
-                        rho_block = prim[i, 0, :, :, :] * code_units_rho
-                        prs_block = prim[i, 4, :, :, :] * code_units_rho * code_units_vel**2
-                        block = prs_block / rho_block / ut.constants.kb * ut.constants.mu * ut.constants.mh
-                    else:
-                        continue
+                    blocks = {}
+                    for field in fields:
+                        try:
+                            if field == 'rho':
+                                block = prim[i, 0, :, :, :] * code_units_rho
+                            elif field == 'prs':
+                                block = prim[i, 4, :, :, :] * code_units_rho * code_units_vel**2
+                            elif field == 'vel1':
+                                block = prim[i, 1, :, :, :] * code_units_vel
+                            elif field == 'vel2':
+                                block = prim[i, 2, :, :, :] * code_units_vel
+                            elif field == 'vel3':
+                                block = prim[i, 3, :, :, :] * code_units_vel
+                            elif field == 'T':
+                                rho_block = prim[i, 0, :, :, :] * code_units_rho
+                                prs_block = prim[i, 4, :, :, :] * code_units_rho * code_units_vel**2
+                                block = prs_block / rho_block / ut.constants.kb * ut.constants.mu * ut.constants.mh
+                            else:
+                                continue
+                            blocks[field] = block
+                        except Exception as e:
+                            print(f"Error reading block {i}, field '{field}': {e}")
+                            continue
+                    results.append((start3, end3, start2, end2, start1, end1, blocks))
+            return results
 
-                    blocks[field] = block
-                except Exception as e:
-                    print(f"Error reading block {i}, field '{field}': {e}")
-                    continue
 
-            return (start3, end3, start2, end2, start1, end1, blocks)
+        def chunks(lst, n):
+            """Yield successive n-sized chunks from lst."""
+            for i in range(0, len(lst), n):
+                yield lst[i:i + n]
 
-        # Run the processing in parallel using joblib
-        results = Parallel(n_jobs=n_jobs)(delayed(process_block)(i, LogicalLocations, MeshBlockSize, prim, code_units_rho, code_units_vel, fields) for i in range(NumMeshBlocks))
+        block_indices = list(range(NumMeshBlocks))
 
-        # Assign the processed blocks back to the global data array
+        # Tune batch_size for your system, e.g., 5 or 10 blocks per batch
+        batch_size = max(1, NumMeshBlocks // (n_jobs * 4))  # heuristic: 4 batches per worker
+        block_chunks = list(chunks(block_indices, batch_size))
+
+        results_chunks = Parallel(n_jobs=n_jobs)(
+            delayed(process_blocks)(chunk, filename, LogicalLocations, MeshBlockSize, code_units_rho, code_units_vel, fields) for chunk in block_chunks
+        )
+
+        # Flatten results
+        results = [item for sublist in results_chunks for item in sublist]
+
         for (start3, end3, start2, end2, start1, end1, blocks) in results:
             for field, block in blocks.items():
                 data[field][start3:end3, start2:end2, start1:end1] = block
+
+
 
     return data
