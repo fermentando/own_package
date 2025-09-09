@@ -6,7 +6,7 @@
 
 #SBATCH --gres=gpu:2
 #SBATCH --cpus-per-task=48
-##SBATCH --mem=240000
+#SBATCH --mem=240000
 
 # Email notifications
 #SBATCH --mail-type=ALL
@@ -23,7 +23,7 @@ module list
 
 export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
 
-srun python /u/ferhi/own_package/plots/3D_vsf_hdf.py --N_procs $SLURM_CPUS_PER_TASK
+srun python /u/ferhi/own_package/plots/3D_vsf_hdf.py --N_procs $SLURM_CPUS_PER_TASK single
 
 echo "Elapsed: $(($SECONDS / 3600))hrs $((($SECONDS / 60) % 60))min $(($SECONDS % 60))sec"
 

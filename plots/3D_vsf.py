@@ -14,55 +14,16 @@ import matplotlib.pyplot as plt
 plt.style.use('custom_plot')
 # ====================== PARAMS ===========================
 cm_to_pc = 3.24078e-19
+yt.enable_parallelism()
 
 def load_covering_grid(infile):
-
-    latest_file = infile
-    ds = yt.load(latest_file, default_species_fields="ionized")
-    ds.force_periodicity()
-    # Load full domain
-    cg_full = ds.covering_grid(level=ds.max_level,
-                               left_edge=ds.domain_left_edge,
-                               dims=ds.domain_dimensions)
-
-    # Mask cold gas (temperature ≤ 3e4 K)
-    T = cg_full['temperature']
-    mask_cold = T <= 3e4
-
-    # Get positions in pc
-    x = cg_full['x'][mask_cold].to('pc')
-    y = cg_full['y'][mask_cold].to('pc')
-    z = cg_full['z'][mask_cold].to('pc')
-
-    # Compute center of cold gas (in pc)
-    x0 = np.median(x)
-    y0 = np.median(y)
-    z0 = np.median(z)
-    center = [x0, y0, z0]
-
-    # Compute radial distances and get r_max (95th percentile)
-    r = np.sqrt((x - x0)**2 + (y - y0)**2 + (z - z0)**2)
-    r_max = np.percentile(r, 95)
-
-    # Define left edge and box size in code units
-    center_code = ds.arr(center).to('code_length')
-    r_max_code = ds.quan(r_max, 'pc').to('code_length')
-
-    left_edge = center_code - r_max_code
-    box_size = 2 * r_max_code
-
-    # Determine number of cells
-    dx = cg_full.dds[0]  # in code units
-    N_cells = int(np.ceil(box_size / dx))
-    block_size = [N_cells] * 3
-    print("This is dx: ", dx.to('pc'))
-
-    # Load new covering grid centered on cold gas
-    cg = ds.covering_grid(level=ds.max_level,
-                          left_edge=left_edge,
-                          dims=block_size)
-    
-    return cg, dx.to('pc')
+    """Load a covering grid from a .phdf file using yt."""
+    ds = yt.load(infile)
+    # Use the finest level for the covering grid
+    level = ds.index.max_level
+    cg = ds.covering_grid(level=level, left_edge=ds.domain_left_edge, dims=ds.domain_dimensions)
+    dx = float(ds.domain_width[0] / ds.domain_dimensions[0])
+    return cg, dx
 
 def extract_flat_data(cg, temp_cut=3e4):
     nHp = cg['number_density'][:]
@@ -176,24 +137,35 @@ if False:
         length = determine_length(r_max, bin_resolution=bin_resolution)
         
         return np.linspace(0*r_max, r_max, length)
-else:
-    def generate_bins(dx, data, max_n_ij=None, bin_resolution=100, length=None):
+if True: 
+    def generate_bins(dx, data, max_n_ij=None, bin_resolution=80, length=None):
         N_ij = determine_n_ij(data, max_n_ij=max_n_ij)
-        
-        # Automatically determine length based on r_max or use provided length
-        r_max = np.max(np.sqrt(data['x']**2 + data['y']**2 + data['z']**2))
-        length = determine_length(r_max, bin_resolution=bin_resolution)
-        
-        # Generate bins based on determined N_ij and length
-        ij = [np.sqrt(i**2 + j**2 + k**2) for i in range(N_ij) for j in range(N_ij) for k in range(N_ij)]
-        ij = np.unique(np.array(ij)[1:] * dx)[:5]
-        log_centers = np.log10(ij)
-        N_regular = length - len(log_centers)
-        start = log_centers[-1] + (log_centers[-1] - log_centers[-2])
-        log_full = np.concatenate((log_centers, np.linspace(start, np.log10(r_max), N_regular)))
-        
-        return log_full
 
+        # Vectorized r_max computation
+        r_max = np.sqrt(data['x']**2 + data['y']**2 + data['z']**2).max()
+
+        # Auto-determine length if not provided
+        if length is None:
+            length = determine_length(r_max, bin_resolution=bin_resolution)
+
+        grid = np.arange(N_ij)
+        I, J, K = np.meshgrid(grid, grid, grid, indexing='ij')
+        ij = np.sqrt(I**2 + J**2 + K**2).ravel()
+
+        ij = np.unique(ij[ij > 0] * dx)
+
+        n_log = min(5, len(ij))
+        log_centers = np.log10(ij[:n_log])
+
+        N_regular = length - len(log_centers)
+        if N_regular < 1 or len(log_centers) < 2:
+            raise ValueError("Not enough unique ij values to generate bins.")
+
+        # ✅ Continue logarithmic spacing from where log_centers leaves off
+        start = log_centers[-1] + (log_centers[-1] - log_centers[-2])
+        log_full = np.concatenate([log_centers, np.linspace(start, np.log10(r_max), N_regular)])
+
+        return log_full
 
 def generate_bins_edges(bin_centers):
     bw = np.diff(bin_centers) / 2
@@ -314,7 +286,7 @@ if __name__ == "__main__":
     print(f"N_procs set to: {N_procs} processors.")
 
     
-    if len(user_args) == 0:
+    if True: #len(user_args) == 0:
         RUNS = [os.getcwd()]
         run_paths = RUNS
         parts = RUNS[0].split('/')
@@ -324,7 +296,7 @@ if __name__ == "__main__":
             os.makedirs(os.path.join('/u/ferhi/Figures/velocity_structure_function/',f"{parts[-3]}/{parts[-2]}"))
 
 
-    else:
+    if False:
         runDir = os.getcwd()
         run_paths = np.array([
             os.path.join(runDir, folder) 
@@ -336,12 +308,15 @@ if __name__ == "__main__":
         if not os.path.exists(os.path.join('/u/ferhi/Figures/velocity_structure_function/',parts[-2])): 
             os.makedirs(os.path.join('/u/ferhi/Figures/velocity_structure_function/',parts[-2]))
 
-    single_file_paths = sorted(glob.glob(os.path.join(run_paths[0], 'out/parthenon.prim.*.phdf')))
+    print(run_paths)
+    single_file_paths = sorted(glob.glob(os.path.join(run_paths[0], 'out/parthenon.prim.[0-9]*.phdf')))[::-50]
 
     sim_input = run_paths[0].split('out')[0]
     params = load_params(os.path.join(sim_input, 'ism.in'))
     depth  = float(params['reader'].get('problem/wtopenrun', 'depth'))
     cloud_r  = float(params['reader'].get('problem/wtopenrun', 'r0_cgs'))
-    stand_l = cloud_r * depth * unyt.cm * cm_to_pc
+    stand_l = 0.1 * cloud_r * unyt.cm * cm_to_pc
+    
+
     run_all_parallel(single_file_paths, stand_l, outdir=os.path.join('/u/ferhi/Figures/velocity_structure_function/',saveFile), n_procs=N_procs)
     

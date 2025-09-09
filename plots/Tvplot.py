@@ -119,7 +119,7 @@ if __name__ == '__main__':
     
     run_list_multiplot = [
         "/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00001.phdf", 
-        "/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00018.phdf",
+        "/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00050.phdf",
         "/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00100.phdf", 
     ]
     

@@ -7,18 +7,20 @@ import glob
 from utils import get_n_procs_and_user_args
 from generate_ics import load_params
 from adjust_ics import SingleCloudCC
-from read_hdf5 import *
+from read_hdf5 import read_hdf5
 import unyt
 import matplotlib.pyplot as plt
 from scipy.spatial import cKDTree
+import itertools
 plt.style.use('custom_plot')
 # ====================== PARAMS ===========================
 cm_to_pc = 3.24078e-19
 
 import numpy as np
-def load_cold_gas_region_and_fields(filename, mbar, temp_cut=3e4, n_jobs = 1):
+def load_cold_gas_region_and_fields(filename, mbar, temp_cut=1e5, n_jobs = 1):
     fields =  ['rho', 'prs', 'vel1', 'vel2', 'vel3', 'x1', 'x2', 'x3', 'T']
     cg = read_hdf5(filename, fields, n_jobs)
+
 
     # Extract raw fields
     T   = cg['T']           # K
@@ -33,7 +35,7 @@ def load_cold_gas_region_and_fields(filename, mbar, temp_cut=3e4, n_jobs = 1):
     n_p = n_e
 
     # Mask cold gas
-    cold_mask = T <= temp_cut
+    cold_mask = T >= temp_cut
 
     # Cold gas positions
     x_cold = x[cold_mask]
@@ -141,46 +143,62 @@ def generate_flat(vx_image, bins):
     return x_values, z_values, vx_values
 
 
-def determine_n_ij(data, max_n_ij=None):
-    num_points = len((data['x']))  
+import numpy as np
 
+def determine_n_ij(data, max_n_ij=None):
+    num_points = len(data['x'])
     n_ij = int(np.sqrt(num_points) / 10)
     if max_n_ij is not None:
-        n_ij = min(n_ij, max_n_ij)  
+        n_ij = min(n_ij, max_n_ij)
     return n_ij
 
 def determine_length(r_max, bin_resolution=5):
-
-    length = int(np.log10(r_max) * bin_resolution)  # Bin resolution can be adjusted
-    return length
+    return int(np.log10(r_max) * bin_resolution)
 
 if False:
-    def generate_bins(dx, lmax, data, max_n_ij=None, bin_resolution=50):
-        """Generate bins for the VSF using automatically determined N_ij and length."""
-        N_ij = determine_n_ij(data, max_n_ij=max_n_ij)
-        
-        r_max = np.max(np.sqrt(data['x']**2 + data['y']**2 + data['z']**2))
-        length = determine_length(r_max, bin_resolution=bin_resolution)
-        
-        return np.linspace(0*r_max, r_max, length)
-else:
+    def generate_bins(dx, data, bin_resolution=80, length=None):
+        # Estimate r_max from spatial extent of the data
+        r_max = np.sqrt(data['x']**2 + data['y']**2 + data['z']**2).max()
+
+        # Determine number of bins if not provided
+        if length is None:
+            length = determine_length(r_max, bin_resolution=bin_resolution)
+
+        r_min = dx  # smallest resolvable scale
+        if r_min <= 0 or r_min >= r_max:
+            raise ValueError("Invalid dx relative to r_max.")
+
+        log_full = np.logspace(np.log10(r_min), np.log10(r_max), length)
+        return log_full
+if True:
     def generate_bins(dx, data, max_n_ij=None, bin_resolution=80, length=None):
         N_ij = determine_n_ij(data, max_n_ij=max_n_ij)
-        
-        # Automatically determine length based on r_max or use provided length
-        r_max = np.max(np.sqrt(data['x']**2 + data['y']**2 + data['z']**2))
-        length = determine_length(r_max, bin_resolution=bin_resolution)
-        
-        # Generate bins based on determined N_ij and length
-        ij = [np.sqrt(i**2 + j**2 + k**2) for i in range(N_ij) for j in range(N_ij) for k in range(N_ij)]
-        ij = np.unique(np.array(ij)[1:] * dx)[:5]
-        log_centers = np.log10(ij)
-        N_regular = length - len(log_centers)
-        start = log_centers[-1] + (log_centers[-1] - log_centers[-2])
-        log_full = np.concatenate((log_centers, np.linspace(start, np.log10(r_max), N_regular)))
-        
-        return log_full
 
+        # Vectorized r_max computation
+        r_max = np.sqrt(data['x']**2 + data['y']**2 + data['z']**2).max()
+
+        # Auto-determine length if not provided
+        if length is None:
+            length = determine_length(r_max, bin_resolution=bin_resolution)
+
+        grid = np.arange(N_ij)
+        I, J, K = np.meshgrid(grid, grid, grid, indexing='ij')
+        ij = np.sqrt(I**2 + J**2 + K**2).ravel()
+
+        ij = np.unique(ij[ij > 0] * dx)
+
+        n_log = min(5, len(ij))
+        log_centers = np.log10(ij[:n_log])
+
+        N_regular = length - len(log_centers)
+        if N_regular < 1 or len(log_centers) < 2:
+            raise ValueError("Not enough unique ij values to generate bins.")
+
+        # ✅ Continue logarithmic spacing from where log_centers leaves off
+        start = log_centers[-1] + (log_centers[-1] - log_centers[-2])
+        log_full = np.concatenate([log_centers, np.linspace(start, np.log10(r_max), N_regular)])
+
+        return log_full
 
 def generate_bins_edges(bin_centers):
     bw = np.diff(bin_centers) / 2
@@ -189,6 +207,7 @@ def generate_bins_edges(bin_centers):
     edges[0] = bin_centers[0] - bw[0]
     edges[-1] = bin_centers[-1] + bw[-1]
     return edges
+
 
 #@njit
 if False:
@@ -206,7 +225,7 @@ if False:
 
 else: 
     def compute_vsf(x, y, z, vx, vz, bins_edges, vsf, counts):
-        sample_size = min(10000, len(x))  # Take the minimum between 10000 and the actual population size
+        sample_size = min(100000, len(x))  # Take the minimum between 10000 and the actual population size
         idx = np.random.choice(len(x), size=sample_size, replace=False)
         x, y, z, vx, vz = x[idx], y[idx], z[idx], vx[idx],  vz[idx]
         coords = np.column_stack((x, y, z))
@@ -225,21 +244,60 @@ else:
         
         return vsf, counts
 
+def compute_vsf_chunk(x, y, z, vx, vz, bin_edges, seed):
+    rng = np.random.default_rng(seed)
+    sample_size = min(1000, len(x))
+    idx = rng.choice(len(x), size=sample_size, replace=False)
+    x_, y_, z_, vx_, vz_ = x[idx], y[idx], z[idx], vx[idx], vz[idx]
 
-def generate_vsf(data, dx, stand_l, outname, min_pairs=3):
+    coords = np.column_stack((x_, y_, z_))
+    vels = np.column_stack((vx_, vz_))
+
+    tree = cKDTree(coords)
+    pairs = tree.query_pairs(r=bin_edges[-1], output_type='ndarray')
+    if pairs.size == 0:
+        return np.zeros(len(bin_edges) - 1), np.zeros(len(bin_edges) - 1)
+
+    # ✅ Faster: use squared distances (avoids costly sqrt)
+    drs = np.sum((coords[pairs[:, 0]] - coords[pairs[:, 1]])**2, axis=1)
+    dvs = np.sum((vels[pairs[:, 0]] - vels[pairs[:, 1]])**2, axis=1)
+
+    # ✅ Square the bin edges for correct binning on squared distances
+    bin_edges_squared = bin_edges**2
+    bin_idx = np.searchsorted(bin_edges_squared, drs) - 1
+    valid = (bin_idx >= 0) & (bin_idx < len(bin_edges) - 1)
+
+    vsf = np.zeros(len(bin_edges) - 1)
+    counts = np.zeros(len(bin_edges) - 1)
+
+    np.add.at(vsf, bin_idx[valid], dvs[valid])
+    np.add.at(counts, bin_idx[valid], 1)
+
+    return vsf, counts
+
+def generate_vsf(data, dx, stand_l, outname, n_jobs, min_pairs=3,):
     """Generate the 3D velocity structure function."""
     log_centers = generate_bins(dx, data)
     edges = generate_bins_edges(log_centers)
+    print("The histogram centres have been generated.")
     bin_edges = 10**edges
     vsf = np.zeros(len(bin_edges) - 1)
     counts = np.zeros_like(vsf)
     x, y, z = data['x'], data['y'], data['z']
     vx, vz = data['vx'], data['vz']
-    compute_vsf(x, y, z, vx, vz, bin_edges, vsf, counts)
-    #vsf /= np.where(counts > 0, counts, 1)
-        # Avoid division by zero
+    n_jobs = 8  # or use os.cpu_count()
+    seeds = np.arange(n_jobs)  # different seeds for reproducibility
+    results = Parallel(n_jobs=n_jobs)(
+        delayed(compute_vsf_chunk)(x, y, z, vx, vz, bin_edges, seed) for seed in seeds
+    )
+
+    # Combine results
+    for vsf_chunk, count_chunk in results:
+        vsf += vsf_chunk
+        counts += count_chunk
+
     with np.errstate(divide='ignore', invalid='ignore'):
-        vsf = np.where(counts > 0, vsf / counts, np.nan)
+        vsf = np.where(counts > 0, np.sqrt(vsf / counts), np.nan)
 
     # Mask low-count bins
     vsf = np.where(counts >= min_pairs, vsf, np.nan)
@@ -294,18 +352,19 @@ def generate_vsf(data, dx, stand_l, outname, min_pairs=3):
 
 
 
-def process_run(infile, stand_l, mbar, outdir):
+def process_run(infile, stand_l, mbar, outdir, n_jobs):
     #try:
     print(infile)
     idx = infile.split('/')[-1].split('.')[-2]
-    outfile = os.path.join(outdir, f"noy3D_vsf_{str(int(idx)).zfill(3)}")
+    #outfile = os.path.join(outdir, f"noy3D_vsf_{str(int(idx)).zfill(3)}")
+    outfile = os.path.join(outdir, f"hot3D_vsf_{str(int(idx)).zfill(3)}")
     if os.path.exists(outfile + '.png'):
         print(f"[✓] Skipping {outfile}, already exists.")
         return
 
-    data, dx = load_cold_gas_region_and_fields(infile, mbar, n_jobs = 1)
+    data, dx = load_cold_gas_region_and_fields(infile, mbar, n_jobs=n_jobs)
     print("File has been read.")
-    generate_vsf(data, dx, stand_l, outfile)
+    generate_vsf(data, dx, stand_l, outfile, n_jobs=n_jobs)
     print(f"[✓] VSF generated: {outfile}")
 
 
@@ -315,8 +374,8 @@ def run_all_parallel(run_list, stand_l, mbar, outdir, n_procs):
     os.makedirs(outdir, exist_ok=True)
     
     # Use joblib to parallelize process_run for each file
-    Parallel(n_jobs=(n_procs//1))(
-        delayed(process_run)(infile, stand_l, mbar, outdir)
+    Parallel(n_jobs=1)(
+        delayed(process_run)(infile, stand_l, mbar, outdir, n_jobs=n_procs)
         for infile in run_list
     )
 
@@ -350,7 +409,10 @@ if __name__ == "__main__":
             os.makedirs(os.path.join('/u/ferhi/Figures/velocity_structure_function/',parts[-2]))
 
     print(run_paths)
-    single_file_paths = sorted(glob.glob(os.path.join(run_paths[0], 'out/parthenon.prim.[0-9]*.phdf')))
+    single_file_paths = sorted(glob.glob(os.path.join(run_paths[0], 'out/parthenon.prim.[0-9]*.phdf')))[::-1][::10]
+
+    # Make it a cyclic iterator
+    cyclic_files = itertools.cycle(single_file_paths)
 
     sim_input = run_paths[0].split('out')[0]
     params = load_params(os.path.join(sim_input, 'ism.in'))

@@ -4,19 +4,59 @@ from multiprocessing import Pool, cpu_count
 import argparse
 import matplotlib.pyplot as plt
 import matplotlib.style as style
+import yt
+from yt.units import dyn, cm, K
 
 style.core.USER_LIBRARY_PATHS.append('custom_plot')
 
 ### Essentials ###
 homeDir = '/u/ferhi'
 
+
+@yt.derived_field(name=("gas", "pressure_normalized"), units="", sampling_type="cell")
+def _pressure_normalized(field, data):
+    p = data[("gas", "pressure")]
+    pmax = 1.5e-11 * (dyn / cm**2)
+    return p / pmax if pmax > 0 else p
+
+@yt.derived_field(name=("gas", "mixing_gas_flag"), units="", sampling_type="cell")
+def _temperature_range_flag(field, data):
+    T = data[("gas", "temperature")]
+    mask = (T >= 7e4 * yt.units.K) & (T <= 3e5 * yt.units.K)
+    return mask.astype("float")
+
+@yt.derived_field(name=("gas", "luminosity_normalized"), units="", sampling_type="cell")
+def _luminosity_normalized(field, data):
+    # Temperature field
+    T = data[("gas", "temperature")]
+    T_min = 0.8e5 * K
+    T_max = 1.2e5 * K
+    mask = (T >= T_min) & (T <= T_max)
+
+    vx = data[("gas", "velocity_x")]
+    vy = data[("gas", "velocity_y")]
+    vz = data[("gas", "velocity_z")]
+    v_mag = (vx**2 + vy**2 + vz**2)**0.5
+
+
+    cs = data[("gas", "sound_speed")]
+    M = v_mag / cs
+
+    L = T * (1 + M**2) * mask
+
+    # Normalize by max (avoid division by zero)
+    Lmax = L.max()
+    if Lmax > 0:
+        L = L / Lmax
+    return (L / Lmax).d if Lmax > 0 else L.d
 fields = {
 
     'density': ("gas", "density"),
-    'pressure': ("gas", "pressure"),
-    'velocity_y': ("gas", "velocity_y"),
+    'pressure': ("gas", "pressure_normalized"),
     'temperature': ("gas", "temperature"),
-
+    'velocity_y': ("gas", "velocity_y"),
+    'velocity_z': ('gas', 'velocity_z'),
+    'scalar':   ("gas", "mixing_gas_flag"),
 
 }
 
@@ -27,6 +67,7 @@ class constants:
     kb = 1.3806488e-16 #cgs
     kpc_over_cm = 3.24078e-22
     s_to_Myrs = 3.1710e-14 
+    G = 6.67430e-8 #cgs
 
     Xsol = 1.0
     Zsol = 1.0

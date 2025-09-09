@@ -6,10 +6,21 @@ import imageio
 import os
 from utils import get_n_procs_and_user_args
 from joblib import Parallel, delayed
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+
+colors = [
+    (0.4, 0.7, 1.0),     # stronger light blue (less white)
+    (0.0, 0.2, 0.5),     # deep blue
+    (0.0, 0.0, 0.0),     # black
+    (0.5, 0.2, 0.0),     # dark orange
+    (1.0, 0.8, 0.2)      # bright yellow
+]
+final_eye = []
+
+custom_cmap = LinearSegmentedColormap.from_list("stronger_blue_black_orange_yellow", colors)
 
 
-
-def find_interface_and_extract_prism(rho, nx1, nx2, nx3, threshold=1e-25):
+def find_interface_and_extract_prism(rho, nx1, nx2, nx3, threshold=1e-25, y_padding=0):
     """
     Vectorized version to detect dense gas interface along y-axis and extract centered prism.
 
@@ -38,6 +49,7 @@ def find_interface_and_extract_prism(rho, nx1, nx2, nx3, threshold=1e-25):
         raise ValueError("No dense interface found in the volume.")
 
     yc = int(np.median(valid_hits))  # Median y-index of interface
+    yc = max(yc - y_padding, 0)  
     zc, xc = zmax // 2, xmax // 2    # Center in z and x
 
     # Compute bounds
@@ -58,7 +70,7 @@ def find_interface_and_extract_prism(rho, nx1, nx2, nx3, threshold=1e-25):
 
 def render_frame_parallel(file_info, hold_frames, rot_frames, spiral_frames, thetas, phi, r_vals, output_dir):
     file_path, globalindx = file_info
-    frame_path = os.path.join(output_dir, f"frame_{globalindx:03d}.png")
+    frame_path = os.path.join(output_dir, f"white_frame_{globalindx:03d}.png")
     
     if os.path.exists(frame_path):
         print(f"Skipping existing frame: {frame_path}")
@@ -78,40 +90,48 @@ def render_frame_parallel(file_info, hold_frames, rot_frames, spiral_frames, the
     box = pv.Box(bounds=bounds)
     pl.add_volume(rho, scalars="values", cmap="plasma", clim=[1e-26, 1e-24], show_scalar_bar=False)
     pl.add_mesh(box, color="white", style="wireframe", line_width=0.1)
-    pl.set_background((0.05, 0.05, 0.05))
+    #pl.set_background((0.05, 0.05, 0.05))
 
-    if file_path in hold_frames:
-        pl.camera_position = [eye0, centre, (1, 0, 0)]
-
-    elif file_path in rot_frames:
+    if file_path in rot_frames:
         indx = rot_frames.tolist().index(file_path)
         new_vector = (np.cos(thetas[indx]), np.sin(thetas[indx]), 0)
         pl.camera_position = (eye0, centre, new_vector)
 
     elif file_path in spiral_frames:
         indx = spiral_frames.tolist().index(file_path)
+
+        initial_y_angle = cn2 + 2 * rho.shape[1]  # example offset amount (units depend on your scale)
+        total_frames = len(spiral_frames)
+        decay_factor = max(0, 1 - indx / (total_frames / 2))  # decay in first 10% of frames
+        y = cn2 + initial_y_angle * decay_factor
+
         z = cn3 - r_vals[indx] * rho.shape[2] * np.cos(phi[indx])
         x = cn1 + r_vals[indx] * rho.shape[2] * np.sin(phi[indx])
-        eye = (x, cn2, z)
+        eye = (x, y, z)
         new_vector = (0, 1, 0)
         pl.camera_position = (eye, centre, new_vector)
+        if file_path == spiral_frames.tolist()[-1]:
+            final_eye.append(eye)
+
+    elif file_path in hold_frames:
+        pl.camera_position = [final_eye[-1], centre, (0, 1, 0)]
 
     pl.screenshot(frame_path)
     print(f"Saved: {frame_path}")
 
-def rot_and_spiral_zoom_in(files, nhold=0.2, nrot=0.2, nspiral=0.7, output_dir=None, n_workers=4):
+def rot_and_spiral_zoom_in(files, nhold=0.3, nrot=0, nspiral=0.7, output_dir=None, n_workers=4):
     files = np.sort(files)
     n_total = len(files)
     n_hold = int(n_total * nhold)
     n_rot = int(n_total * nrot)
     n_spiral = int(n_total * nspiral)
 
-    hold_frames = files[:n_hold]
-    rot_frames = files[n_hold:n_hold + n_rot]
-    spiral_frames = files[n_hold + n_rot:n_hold + n_rot + n_spiral]
+    rot_frames = files[:n_rot]
+    spiral_frames = files[n_rot:n_rot + n_spiral]
+    hold_frames = files[n_rot + n_spiral:n_rot + n_spiral + n_hold]
 
     thetas = np.linspace(0, np.pi / 2, n_rot)
-    phi = np.linspace(0, np.pi / 2, n_spiral)
+    phi = np.linspace(0, np.pi, n_spiral)
     r_vals = np.linspace(10, 5, n_spiral)
 
     os.makedirs(output_dir, exist_ok=True)
@@ -129,12 +149,101 @@ def rot_and_spiral_zoom_in(files, nhold=0.2, nrot=0.2, nspiral=0.7, output_dir=N
     )
 
     # Combine to video
-    dir_save = os.path.join(output_dir, "volume_rendering.mp4")
-    frame_files = sorted(glob.glob(os.path.join(output_dir, "frame_*.png")))
+    dir_save = os.path.join(output_dir, "white_volume_rendering.mp4")
+    frame_files = sorted(glob.glob(os.path.join(output_dir, "white_frame_*.png")))
     frames = [imageio.imread(f) for f in frame_files]
     imageio.mimsave(dir_save, frames, fps=15)
     print(f"Video saved to: {dir_save}")
 
+
+def render_frame_vertical_spiral(file_info, hold_frames, spiral_frames, phi, r_vals, output_dir):
+
+    file_path, globalindx = file_info
+    frame_path = os.path.join(output_dir, f"frame_{globalindx:03d}.png")
+
+    if os.path.exists(frame_path):
+        print(f"Skipping existing frame: {frame_path}")
+        return
+
+    rho_read = read_hdf5(file_path, n_jobs=4)['rho']
+    print(f"Processing file: {file_path} with shape {rho_read.shape}")
+    rho = find_interface_and_extract_prism(rho_read, rho_read.shape[0], 2048, rho_read.shape[2])
+    xmin, xmax = 0, rho.shape[0]
+    ymin, ymax = 0, rho.shape[1]
+    zmin, zmax = 0, rho.shape[2]
+    centre = tuple([s // 2 for s in rho.shape])
+    cn1, cn2, cn3 = centre
+    bounds = (xmin, xmax, ymin, ymax, zmin, zmax)
+
+    pl = pv.Plotter(off_screen=True)
+    box = pv.Box(bounds=bounds)
+    pl.add_volume(rho, scalars="values", cmap="plasma", clim=[1e-26, 1e-24], show_scalar_bar=False)
+    pl.add_mesh(box, color="white", style="wireframe", line_width=0.1)
+    pl.set_background((0.05, 0.05, 0.05))
+
+
+    if file_path in spiral_frames:
+        indx = spiral_frames.tolist().index(file_path)
+       
+        radius = r_vals[indx] * max(rho.shape)  # radial distance from center
+        angle = phi[indx]
+        r_max = max(r_vals) * max(rho.shape)
+        r_min = min(r_vals) * max(rho.shape)
+
+        y_start = cn2 + 2.0 * max(rho.shape)  # starting height above center
+        y_end = cn2*1.2                            # ending height (center y)
+
+        t = (radius - r_min) / (r_max - r_min)  # normalize radius from 0 to 1
+        y = y_start * t + y_end * (1 - t)
+
+        x = cn1 + radius * np.cos(angle)
+        z = cn3 + radius * np.sin(angle)
+
+        eye = (x, y, z)
+        up_vector = (0, 1, 0)  # camera's up direction
+        pl.camera_position = (eye, centre, up_vector)
+    
+    if file_path in hold_frames:
+        # Start from far above the center, looking down vertically
+        eye = (cn1 + radius , 0, cn3)
+        view_vector = (0, 1, 0)
+        pl.camera_position = (eye, centre, view_vector)
+
+    pl.screenshot(frame_path)
+    print(f"Saved: {frame_path}")
+
+def render_vertical_spiral_zoom_in(files, nhold=0, nspiral=1, output_dir=None, n_workers=4):
+    files = np.sort(files)
+    n_total = len(files)
+    n_hold = int(n_total * nhold)
+    n_spiral = int(n_total * nspiral)
+
+    hold_frames = files[:n_hold]
+    spiral_frames = files[n_hold:n_hold + n_spiral]
+
+    phi = np.linspace(0, 2 * np.pi, n_spiral)
+    r_vals = np.linspace(2, 0, n_spiral)
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Build the list of files with index
+    file_info = [(f, i) for i, f in enumerate(files)]
+
+    # Use multiprocessing pool
+    Parallel(n_jobs=n_workers)(
+        delayed(render_frame_vertical_spiral)(
+            file_info[i],
+            hold_frames, spiral_frames,
+            phi, r_vals, output_dir
+        ) for i in range(len(files))
+    )
+
+    # Combine to video
+    dir_save = os.path.join(output_dir, "vertical_spiral_rendering.mp4")
+    frame_files = sorted(glob.glob(os.path.join(output_dir, "frame_*.png")))
+    frames = [imageio.imread(f) for f in frame_files]
+    imageio.mimsave(dir_save, frames, fps=15)
+    print(f"Video saved to: {dir_save}")
 
 if __name__ == "__main__":
     N_procs, user_args = get_n_procs_and_user_args()
@@ -149,4 +258,5 @@ if __name__ == "__main__":
 
     print("Output directory: ", saveDir)
     print("Outdir: ", saveDir)
-    rot_and_spiral_zoom_in(run_paths, output_dir=saveDir, n_workers = N_procs //4 if N_procs > 4 else 1)
+    rot_and_spiral_zoom_in(run_paths, output_dir=saveDir, n_workers = N_procs //4 if N_procs >= 4 else 1)
+    #render_vertical_spiral_zoom_in(run_paths, output_dir=saveDir, n_workers=N_procs // 4 if N_procs >= 4 else 1)

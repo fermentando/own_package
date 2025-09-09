@@ -6,6 +6,7 @@ from joblib import Parallel, delayed
 import argparse
 import os
 import seaborn as sns
+import pickle
 
 plt.style.use("custom_plot")
 colours = sns.color_palette()
@@ -23,7 +24,21 @@ def simulate_percolation(dimensions, p, sigma):
     return smoothed_field > threshold
 
 
+def get_cache_filename(p, sigma, grid_dims, cache_dir="results_cache"):
+    os.makedirs(cache_dir, exist_ok=True)
+    fname = f"fit_p{p:.2e}_sigma{sigma:.2f}_{grid_dims[0]}x{grid_dims[1]}x{grid_dims[2]}.pkl"
+    return os.path.join(cache_dir, fname)
+
 def lognorm_fit_simulation(p, sigma, grid_dims):
+    cache_file = get_cache_filename(p, sigma, grid_dims)
+
+    # Try to load cached result
+    if os.path.exists(cache_file):
+        with open(cache_file, "rb") as f:
+            print(f"[Cache] Loaded result from {cache_file}")
+            return pickle.load(f)
+
+    # Otherwise, run simulation
     try:
         binary_field = simulate_percolation(grid_dims, p, sigma).astype(int)
         cluster_sizes = compute_cluster_sizes(binary_field)
@@ -33,15 +48,14 @@ def lognorm_fit_simulation(p, sigma, grid_dims):
         r_clusters = (3 / (4 * np.pi) * cluster_sizes) ** (1 / 3) / sigma
         r_clusters = r_clusters[r_clusters > 0]
 
-        num_bins = 50 #if len(r_clusters) > 50 else max(10, len(r_clusters) // 3)
-        r_min = 1e-1#r_clusters.min()
-        r_max = 1e1#r_clusters.max()
-        bins = np.logspace(np.log10(r_min), np.log10(r_max), num_bins)
+        r_min = 1e-1
+        r_max = 1e1
+        bins = np.logspace(np.log10(r_min), np.log10(r_max), 50)
 
         shape, loc, scale = stats.lognorm.fit(r_clusters)
         mu = np.log(scale)
 
-        return {
+        result = {
             "p": p,
             "sigma": sigma,
             "r_clusters": r_clusters,
@@ -53,10 +67,16 @@ def lognorm_fit_simulation(p, sigma, grid_dims):
             "grid_dims": grid_dims,
         }
 
+        # Save to cache
+        with open(cache_file, "wb") as f:
+            pickle.dump(result, f)
+            print(f"[Saved] Result cached to {cache_file}")
+
+        return result
+
     except Exception as e:
         print(f"[Error] Simulation failed for p={p}, dims={grid_dims}: {e}")
         return None
-
 
 def main_parallel(realizations, grid_dims_list, n_jobs, output_file=None):
     sigma = 8
@@ -88,7 +108,7 @@ def main_parallel(realizations, grid_dims_list, n_jobs, output_file=None):
     for i, (dims, res_list) in enumerate(grouped.items()):
         ax = axes[i]
         for j, res in enumerate(sorted(res_list, key=lambda x: x['p'], reverse=True)):
-            ax.hist(res['r_clusters'], bins=res['bins'], alpha=0.5, label = rf"$p = 10^{{{int(np.log10(res['p']))}}}$", color = colours[j%len(colours)])
+            ax.hist(res['r_clusters'], bins=res['bins'], alpha=0.5, label = rf"$f_v = 10^{{{int(np.log10(res['p']))}}}$", color = colours[j%len(colours)])
         ax.set_xscale('log')
         ax.set_yscale('log')
         ax.set_xlim(1e-1, 1e1)
@@ -114,7 +134,7 @@ if __name__ == "__main__":
     n_jobs = args.N_procs
 
     realizations = [1e-1, 1e-2, 1e-3, 1e-4]
-    grid_dims_list = [(600, 600, 600)]
+    grid_dims_list = [(800, 800, 800)]
 
-    mu_values = main_parallel(realizations, grid_dims_list, n_jobs, output_file = 'k_estimates.png')
+    mu_values = main_parallel(realizations, grid_dims_list, n_jobs, output_file = f'k_estimates_{grid_dims_list[0][0]}.png')
     print(mu_values)

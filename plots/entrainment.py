@@ -10,9 +10,15 @@ from multiprocessing import Pool, cpu_count
 
 #plt.style.use('custom_plot')
     
-def hst_entrainment(run, vwind):
+def hst_entrainment(run, vwind, threshold=0.2):
         data = np.loadtxt(os.path.join(run, 'out/parthenon.out1.hst'))
         vboost = data[:, -1]
+        correction = 0
+
+        for i in range(10, len(vboost)):
+            if vboost[i] < 0.5 and vboost[i-1] > 1.0:  # heuristically detect a reset
+                correction = vboost[i-1]
+            vboost[i] += correction
         if np.shape(data)[1] >= 17:
             mass = data[:,11]
             vx2 = abs(data[:,13])/(mass)
@@ -20,6 +26,13 @@ def hst_entrainment(run, vwind):
             mass = data[:,10]
             vx2 = abs(data[:,12])/(mass)
         delta_v = (vwind - (vx2 + vboost))/vwind
+
+        restart_fix = 0
+        diffs = np.diff(delta_v)
+        jumps = np.where(np.abs(diffs) > threshold)[0]
+        for j in jumps:
+            restart_fix += delta_v[j] - delta_v[j+1]
+            delta_v[j+1:] += restart_fix
         timeseries = data[:, 0]
         
         return timeseries, delta_v
@@ -90,11 +103,6 @@ if __name__ == "__main__":
 
     for j, run in enumerate(run_paths):
         run_name = run  # Get the last part of the path
-        if "fv01_copy" in run: continue
-        if "fv02_r1e3" in run: continue
-        if "2x" in run: continue
-        if "fv02" in run: continue
-        if "4x" in run: continue
         print(run)
                 
         sim = SingleCloudCC(os.path.join(run, 'ism.in'), dir=run)
@@ -102,15 +110,21 @@ if __name__ == "__main__":
         files = np.sort(glob.glob(os.path.join(run, 'out/parthenon.prim.*.phdf')))
         
         depth = float(sim.reader.get('problem/wtopenrun', 'depth')) 
-        base_fv = int(run.split('fv')[-1][:2])
-        fv = 10 ** (-base_fv)
+        fv = float(sim.reader.get('problem/wtopenrun', 'fv'))
+        rho_wind = float(sim.reader.get('problem/wtopenrun', 'rho_wind_cgs'))
+        rho_cloud = float(sim.reader.get('problem/wtopenrun', 'rho_cloud_cgs'))
+        chi = rho_cloud / rho_wind
         print(fv)
         
         
         tccfact =  depth if sim.tcoolmix/sim.tcc >= 0.1 else 0.1
-        transversing =  sim.R_cloud / sim.v_wind
-        tsh =   np.sqrt(100 * fv**-0.6 + 1)* 0.1 * sim.R_cloud  / sim.v_wind  #* ( 1 + base_fv ** 2 )
-        tsh =  20 * (fv**-0.3333 + 10) * 0.1 * sim.R_cloud / sim.v_wind  # 10 * fv**-0.6 * sim.R_cloud / sim.v_wind
+        tsh =  depth * sim.R_cloud / sim.v_wind
+
+        t1 = 0.1 * np.sqrt(chi) * sim.R_cloud / sim.v_wind
+        t2 = np.sqrt(chi) * fv * depth *  sim.R_cloud / sim.v_wind
+
+        # Linear sum
+        t_linear = t2 + t1
 
         
         if plot_hst: 
@@ -118,9 +132,20 @@ if __name__ == "__main__":
             if run == "/viper/ptmp2/ferhi/d3rcrit/01kc/fv03": continue
             code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
             code_mass_cgs = float(sim.reader.get('units', 'code_mass_cgs'))
+
             v_wind = sim.v_wind / code_length_cgs * code_time_cgs
             times, v_normalised = hst_entrainment(run, vwind=v_wind)
-            plt.plot((times * code_time_cgs - transversing) / tsh, v_normalised,  label=run.split('/')[-1], color=COLOURS[j])
+            timeseries = times
+            time_axis = timeseries * code_time_cgs 
+            idx = (np.abs(time_axis - tsh)).argmin()
+            t_shift = 0.65 * tsh if j ==1 else 0
+            correction_index_mass = (np.abs(time_axis - t_shift)).argmin()
+
+
+            label = run.split('/')[-1]
+            plt.style.use('custom_plot')
+            plt.plot((timeseries * code_time_cgs - tsh) / t_linear, v_normalised ,  label=run.split('/')[-1], color=COLOURS[j], alpha=0.8)
+            
             
         if plot_yt:               
 
@@ -136,8 +161,9 @@ if __name__ == "__main__":
 
 
 
-    plt.xlabel(r't [$\tilde t_{cc} = {\scriptstyle \chi^{1/2} L_{ISM} / v_{wind}}$]')
+    plt.xlabel(r't ')
     plt.legend(loc='upper right')
     plt.tight_layout()
+    print('Saved to: ', f'/u/ferhi/Figures/'+saveFile+'vevol.png')
     plt.savefig(f'/u/ferhi/Figures/'+saveFile+'vevol.png')
     plt.show()

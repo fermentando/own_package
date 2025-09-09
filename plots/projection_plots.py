@@ -8,6 +8,7 @@ import multiprocessing
 import argparse
 from utils import *
 import matplotlib.pyplot as plt
+from matplotlib.ticker import ScalarFormatter
 
 
 class ImageConverter:
@@ -24,11 +25,12 @@ class ImageConverter:
     def process_file(self, filename, typefile):
         """Processes a single file (slice or projection)"""
         index = int(filename.split("/")[-1].split(".")[2])
-        output_path = os.path.join(self.saveDir, f"{str.capitalize(typefile)}_{index}.pdf")
+        output_path = os.path.join(self.saveDir, f"{str.capitalize(typefile)}_{index}.png")
 
         if not os.path.exists(output_path):
             print(f"Generating file number {index}. \n")
             ds = yt.load(filename)
+            
 
             if str.lower(typefile) == 'slice':
                 slc = yt.SlicePlot(ds, "z", self.field)
@@ -79,7 +81,7 @@ class ImageConverter:
             proj = yt.ProjectionPlot(ds, 'z', 'density', weight_field='density', data_source=region, center = new_center)
 
             proj.set_cmap('density', 'viridis')
-            proj.set_zlim('density', 1e-26, 1e-24)
+            proj.set_zlim('density', 1e-27, 1e-23)
             colorbar = proj.plots['density'].cb
 
             colorbar.ax.set_aspect(40)  
@@ -93,23 +95,64 @@ class ImageConverter:
     def process_multiplot(self, filename):
         """Processes a single file for multiplot"""
         index = int(filename.split("/")[-1].split(".")[2])
-        output_path = os.path.join(self.saveDir, f"multiplot_{index:03d}.png")
+        output_path = os.path.join(self.saveDir, f"yt_movie_multiplot_{index:03d}.png")
 
         if not os.path.exists(output_path):
             ds = yt.load(filename)
-            p = yt.ProjectionPlot(ds, "z", fields.values(), weight_field=('gas', 'density'))
-            p.set_log(("gas", "velocity_y"), False)
+
+            p = yt.ProjectionPlot(ds, "x", fields.values(), weight_field=('gas', 'density'))
+            #p.set_log(("gas", "velocity_y"), False)
+            #p.set_log(("gas", "velocity_x"), False)
+            p.set_log(("gas", "pressure_normalized"), False)
+            #p.set_log(("gas", "shear"), False)
 
             # Apply colorbar limits based on field type
             for field in fields.values():
                 if field == ('gas', 'density'):
-                    p.set_zlim(field, 1e-26, 1e-24)
+                    p.set_zlim(field, 1e-27, 1e-23)
+                    p.set_cmap(field, "viridis")
                 elif field == ('gas', 'temperature'):
                     p.set_zlim(field, 1e4, 1e6)
+                    p.set_cmap(field, "plasma")
+                elif field == ("gas", "pressure_normalized"):
+                    p.set_zlim(field, 0, 1)
+                    p.set_cmap(field, "coolwarm")
+                elif field == ("gas", "velocity_y"):
+                    p.set_cmap(field, "magma")
+                    #p.set_zlim(field, 1e-2, 1)
+                    p.set_unit(field, "km/s")
+                elif field == ('gas', 'velocity_z'):
+                    p.set_cmap(field, "cividis")
+                    p.set_zlim(field, -2e5, 2e5)
+                    p.set_unit(("gas", "velocity_z"), "km/s")
+                elif field ==  ("gas", "mixing_gas_flag"):
+                    p.set_zlim(field, 1e-2, 1)
+                    p.set_cmap(field, "BuPu")
 
-            fig = p.export_to_mpl_figure((2, 2))
-            fig.tight_layout()
-            fig.savefig(output_path)
+
+            #p.set_background_color("black")
+
+            fig = p.export_to_mpl_figure((2, 3))
+            for ax in fig.axes:
+                if ax.get_images():  # Main plot axes
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    ax.set_xlabel('y')
+                    ax.set_ylabel('z')
+                    
+            for ax in fig.axes:
+                for im in ax.get_images():
+                    if im.colorbar:
+                        im.colorbar.ax.yaxis.label.set_size(10)
+                        im.colorbar.ax.tick_params(labelsize=10)
+                        #im.colorbar.ax.yaxis.get_offset_text().set_visible(False)
+                        #im.colorbar.ax.yaxis.set_major_formatter(ScalarFormatter(useMathText=True, useOffset=False))
+                        
+            
+            fig.set_constrained_layout(True)
+            fig.set_size_inches(16, 8)
+            fig.savefig(output_path,bbox_inches='tight', pad_inches=0.05, dpi=300)
+            print(f"Generated multiplot for file {index} at {output_path}")
 
     def multiplot(self, mode = "all"):
         """Runs multiplot generation in parallel"""
@@ -124,8 +167,8 @@ class ImageConverter:
 
         if len(file_list) > 0:
             if mode == "all":
-                ffmpeg.input(os.path.join(self.saveDir, "multiplot_%03d.png"), framerate=2).output(
-                    os.path.join(self.saveDir, "multiplot.mp4")
+                ffmpeg.input(os.path.join(self.saveDir, "yt_movie_multiplot_%03d.png"), framerate=10).output(
+                    os.path.join(self.saveDir, "yt_movie_multiplot.mp4")
                 ).run(overwrite_output=True, capture_stdout=True, capture_stderr=True)
             elif mode == "density":
                 files = glob.glob(os.path.join(self.saveDir, "multiplot_density_*.png"))
@@ -176,5 +219,5 @@ if __name__ == "__main__":
         sim.multiplot(mode='density')
     else:
         print('Else')
-        sim.create(typefile=str(sys.argv[1]), mode='single', identifier=str(sys.argv[2]))
+        sim.create(typefile=str(sys.argv[1]), mode='single', identifier=str(sys.argv[-1]))
 

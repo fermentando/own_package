@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib
 import pyFC
 import math
-from scipy.ndimage import gaussian_filter
+from scipy.ndimage import label, gaussian_filter
 import utils as ut
 from adjust_ics import *
 import sys
@@ -199,6 +199,63 @@ def generate_sphere(filename_input, filename):
 
     print(f"Saved ICs {ICs.shape} to {save_path} ({os.path.getsize(save_path)} bytes).")
     return ICs
+
+def generate_three_spheres(filename_input, separation_factor=100):
+    params = load_params(filename_input)
+    cloud_props = SingleCloudCC(filename_input, os.path.abspath(os.path.join(filename_input, '..')))
+    nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
+    x1min, x1max = params['x1min'], params['x1max']
+    x2min, x2max = params['x2min'], params['x2max']
+    x3min, x3max = params['x3min'], params['x3max']
+    cell_size = (x2max-x2min)/nx2
+    Rcloud = params['Rcloud']
+    R = 0.5 * Rcloud
+    print("this is cloud resolution:", R/cell_size/8)
+    print("This will be the separation factor:", separation_factor)
+    sep = separation_factor * R
+
+    x1 = np.linspace(x1min, x1max, nx1)
+    x2 = np.linspace(x2min, x2max, nx2)
+    x3 = np.linspace(x3min, x3max, nx3)
+    
+    X1, X2, X3 = np.meshgrid(x1, x2, x3, indexing='ij')
+
+    # y-positions of the centers of the three spheres
+    x2centre = (x2max + x2min) / 2
+    y_start = x2min + cell_size* 60
+    y_positions = [y_start, y_start + sep, y_start + 2*sep]
+    print((np.array(y_positions) - y_start)/cell_size/8)
+
+    # Compute distance from each of the three centers
+    full_box_rho = np.full(X1.shape, params['rho_wind_cgs'])  # start with background
+
+    for j, y_center in enumerate(y_positions):
+        if y_center > x2max or y_center < x2min:
+            raise ValueError(f"Sphere no. {j} at y_center={y_center} outside of bounds ({x2min}, {x2max})")
+        distance = np.sqrt(X1**2 + (X2 - y_center)**2 + X3**2)
+        inside_sphere = distance <= R
+        full_box_rho[inside_sphere] = params['rho_cloud_cgs']
+    
+
+    nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
+    mbl1, mbl2, mbl3 = (int(params['reader'].get('parthenon/meshblock', f'nx{i}')) for i in range(1,4))
+    mbar_over_kb = cloud_props.mbar/ut.constants.kb 
+    
+    mom = np.zeros_like(full_box_rho)
+    en = 0.5 * mom**2 / full_box_rho + np.ones_like(mom) * params['rho_wind_cgs'] * params['T_wind_cgs'] / (params['gamma'] - 1) /mbar_over_kb
+    
+    fields = (full_box_rho, mom, en)
+    
+    MeshBlockSize = (mbl3, mbl2, mbl1)
+    MeshSize = (nx3, nx2, nx1)
+
+    ICs = gen_adios(MeshSize, MeshBlockSize, fields, 'ICs.bp')
+
+    plt.imshow(ICs[0, :, :,nx3//2], cmap='viridis', norm=matplotlib.colors.LogNorm())
+    plt.colorbar()
+    plt.savefig("ICs_slice.png")
+    plt.show()
+    return ICs
     
 def gen_magnetic_field(params, pressure, rho_field):
     """ Generate a magnetic field based on the density field. """
@@ -297,6 +354,9 @@ def create_ISM(filename_input='ism.in', ism_depth=1, fv=None, n_jobs=1):
 
         buffers = Parallel(n_jobs=n_jobs)(delayed(simulate_percolation)(dimensions, p, s_sigma) for p,s_sigma in zip(p_values,sprime))
         percolation_field = np.sum(buffers, axis=0) > 0
+        labeled_field, num_clumps = label(percolation_field)
+        num_clumps_at_size = len(labeled_field[labeled_field > 8])
+        print(f"Number of clumps: ", num_clumps_at_size)
 
 
     rho_field = np.where(percolation_field, params['rho_cloud_cgs'], params['rho_wind_cgs'])
@@ -327,4 +387,5 @@ if __name__ == "__main__":
     filename_input = os.path.join(localDir, 'ism.in')
     #generate_sphere(filename_input=filename_input)
     create_ISM(filename_input=filename_input, n_jobs=args.n_jobs, ism_depth=args.r)
+    #generate_three_spheres(filename_input=filename_input, separation_factor=args.r)
 

@@ -7,7 +7,6 @@ import os
 run_paths = [
     '/viper/ptmp2/ferhi/fvLism/01kc/fv01_30r',
     '/viper/ptmp2/ferhi/fvLism/01kc/fv02',
-    '/viper/ptmp2/ferhi/fvLism/01kc/fv02_destr',
     '/viper/ptmp2/ferhi/fvLism/kc/fv01_shorter',
     '/viper/ptmp2/ferhi/fvLism/01kc/fv03_long',
     '/viper/ptmp2/ferhi/fvLism/02kc/fv03',
@@ -55,7 +54,7 @@ for j, run in enumerate(run_paths):
     data = np.load(results_file)
 
     
-    plt.plot(data['snapshot_indices'] * t_scale, data['y_extents'] / data['y_extents'][0],  label=run_name)
+    plt.plot(data['snapshot_indices'] * t_scale, data['y_extents'] / data['y_extents'][0],  color = 'k')
 plt.yscale('log')
 plt.xscale('linear')
 plt.xlabel("Snapshot Index (time)")

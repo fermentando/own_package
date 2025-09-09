@@ -6,6 +6,7 @@ import os
 from plot_2d_image import plot_projection
 import read_hdf5 as rd
 from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LogNorm, Normalize
 
 
 def detect_cold_box(temp, threshold=5e4, padding=40 + 3*8):
@@ -24,6 +25,14 @@ colors = [
     (1.0, 0.8, 0.2)      # bright yellow
 ]
 
+colors = [
+    (0.3, 0.0, 0.3),   # dark purple
+    (0.6, 0.2, 0.4),   # purple-red
+    (0.0, 0.0, 0.0),   # black (center, darkest point)
+    (0.9, 0.4, 0.1),   # orange
+    (1.0, 0.8, 0.3),   # yellowish peak
+]
+
 cmap = LinearSegmentedColormap.from_list('purple_to_yellow', colors)
 
 #Create colormap first
@@ -34,13 +43,13 @@ Hist = False
 Proj = True
 # Define parameters
 baseDir = '/viper/ptmp/ferhi/fvLism/'
-savename ='simple_multiplot'
-vol = ['01kc/fv01_30r', '01kc/fv01_movie_2', 'kc/fv01_shorter']  # Only one row for now
+savename ='changingr_muti_volweighted'
+vol = ['01kc/fv01_30r', '02kc/fv01_longer',  'kc/fv01_shorter']#, 'kc/fv01_shorter']  # Only one row for now
 snps = [5, 80, 170]
 
 
 
-vmin, vmax = 1e-26, 1e-24  # Color scale normalization
+vmin, vmax = 1, 1e2  # Color scale normalization
 im = None
 subplot_width = 6.5   # width in inches per subplot
 subplot_height = 2  # height in inches per subplot
@@ -59,9 +68,14 @@ if Proj:
 
     norm_plot = mcolors.LogNorm(vmin=vmin, vmax=vmax)
 
-    for i, v_i in zip([1,2,0],vol):
-        if i == 0:
-            snps = [1,14,29]
+    for i, v_i in zip([1,0,2],vol):
+        if i == 1:
+            snps = [5, 60, 170]
+        #if i == 2:
+        if i == 2:
+            snps = [1, 10, 30]
+        else:
+            snps = [1,30,60]
         for j, snp in enumerate(snps):
             try:
                 snapshot = glob.glob(os.path.join(baseDir+v_i+'/out', 'parthenon.prim.'+str(snp).zfill(5)+'.phdf'))[0]
@@ -72,16 +86,50 @@ if Proj:
             
             #Load data and make projection
             read = rd.read_hdf5(snapshot, fields=['rho', 'T'], n_jobs = 4)
-            rho = read['rho']
-            if i == 1: ref_shape = rho.shape[1]
-            if i == 0:
-                ymin = detect_cold_box(read['T'])
-                rho = rho[:, ymin:ymin + ref_shape, :]
+            rho = read['rho']/1e-26
+            if i == 1:
+                ref_shape = rho.shape[1]
+            else:
+                try:
+                    
+                    ymin = detect_cold_box(read['T'])
+                    rho = rho[:, ymin:ymin + ref_shape, :]
+                except ValueError as e:
+                    print(f"Error in snapshot {snp} of volume {v_i}: {e}.\n Defaulting to box dims.")
+                    rho = rho[:, 0:ref_shape, :]
                 
             plt.style.use('custom_plot')
             
-            plot_dict = plot_projection(rho, view_dir=2, cmap=cmap, new_fig=False, cbar_flag = False, fig = fig, ax=axes[i, j], kwargs={'norm': norm_plot})
+            plot_dict = plot_projection(rho, view_dir=2, cmap=cmap, weight_data=None, new_fig=False, cbar_flag = False, fig = fig, ax=axes[i, j], kwargs={'norm': norm_plot})
+            view_dir = 2
+            L = np.shape(rho)
+            dim = len(L)
 
+            x_dir = (view_dir + 1) % dim
+            y_dir = (view_dir + 2) % dim
+            z_dir = view_dir
+
+
+            x_data = np.linspace(0, L[x_dir]/240, num=L[x_dir] + 1)
+            y_data = np.linspace(0, L[y_dir]/240, num=L[y_dir] + 1)
+            z_data = np.linspace(0, L[z_dir]/240, num=L[z_dir] + 1)
+            weight_data = np.ones_like(rho)
+                        
+            contour_levels = [ 1e-25, 7e-25]
+            weight_data = np.ones_like(rho)       
+            rho_proj = np.sum(rho * weight_data, axis=2) / np.sum(weight_data, axis=2)
+            x_centers = 0.5 * (x_data[:-1] + x_data[1:])
+            y_centers = 0.5 * (y_data[:-1] + y_data[1:])
+            X, Y = np.meshgrid(y_centers, x_centers) 
+            contour = axes[i,j].contour(
+                X, Y,
+                rho_proj,  # transpose to match (ny, nx)
+                levels=contour_levels,
+                colors='black',
+                norm=LogNorm(),
+                linewidths=0.7,
+                alpha=0.4
+            )
             axes[i, j].set_xticks([])
             axes[i, j].set_yticks([])
             
@@ -93,14 +141,15 @@ if Proj:
 
                 
         
-    ks = [10,1,1]
-    ts = [0,2,4]
-    for i in range(3):
+    rs = [0.1,1,10]
+    ts = [1,3,7]
+    for i in range(len(vol)):
         plt.style.use('custom_plot')
-        axes[i, 0].set_ylabel(rf'$k/k_{{\mathrm{{crit}}}} = {ks[i]}$', fontsize = 16, labelpad = 8)
+        axes[i, 0].set_ylabel(rf'$r_{{\mathrm{{cl}}}}/r_{{\mathrm{{crit}}}} = {rs[i]}$', fontsize = 16, labelpad = 8)
+        #axes[i, 0].set_ylabel(rf'$f_v = 10^{{{rs[i]}}}$', fontsize=16, labelpad=8)
         axes[i, 0].yaxis.set_label_position("left")
         
-        
+    for i in range(len(snps)):  
         axes[0, i].xaxis.set_label_position('top') 
         axes[0, i].set_xlabel(rf'$t \sim {ts[i]} \, \tilde{{t}}_{{\mathrm{{cc}}}}$', fontsize = 16, labelpad = 8)
             
@@ -113,8 +162,9 @@ if Proj:
     #for spine in cbar_ax.spines.values():
     #    spine.set_visible(False)
     cbar_ax.tick_params(axis='y', which='both', color = 'white', direction='in')
-    cbar_ax.set_ylabel(r'$\rho \, [\mathrm{cm}^{-3}]$')
-    plt.savefig(f'/u/ferhi/Figures/{savename}.pdf',bbox_inches='tight', dpi=300)
+    cbar_ax.set_ylabel(r'$\chi$')
+    print(f'Saving figure to /u/ferhi/Figures/{savename}.png')
+    plt.savefig(f'/u/ferhi/Figures/{savename}.png',bbox_inches='tight', dpi=300)
     plt.show()
     plt.clf()
 

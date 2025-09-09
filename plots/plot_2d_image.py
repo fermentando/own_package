@@ -143,6 +143,7 @@ def plot_projection(
     z_data=None,
     weight_data=None,
     color_range: list = [None, None],
+    rescale = 1,
     cmap=cr.rainforest,
     cbar_flag: bool = True,
     new_fig=True,
@@ -185,14 +186,14 @@ def plot_projection(
     y_dir = (view_dir + 2) % dim
     z_dir = view_dir
 
-    if np.any(np.equal(x_data, None)):
-        x_data = np.linspace(0, L[x_dir], num=L[x_dir] + 1)
-    if np.any(np.equal(y_data, None)):
-        y_data = np.linspace(0, L[y_dir], num=L[y_dir] + 1)
-    if np.any(np.equal(z_data, None)):
-        z_data = np.linspace(0, L[z_dir], num=L[z_dir] + 1)
+    if x_data is None:
+        x_data = np.linspace(0, L[x_dir]/rescale, num=L[x_dir] + 1)
+    if y_data is None:
+        y_data = np.linspace(0, L[y_dir]/rescale, num=L[y_dir] + 1)
+    if z_data is None:
+        z_data = np.linspace(0, L[z_dir]/rescale, num=L[z_dir] + 1)
 
-    if weight_data == None:
+    if weight_data is None:
         weight_data = np.ones_like(img_data)
 
     proj_plot = np.sum(img_data * weight_data, axis=view_dir) / np.sum(weight_data, axis=view_dir)

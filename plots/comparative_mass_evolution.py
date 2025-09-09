@@ -14,6 +14,7 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.lines import Line2D
 import matplotlib.colors as mcolors
 import matplotlib.gridspec as gridspec
+import h5py
 
 
 # Set up a colormap using seaborn
@@ -43,9 +44,15 @@ def hst_evolution(run, gout=False):
             sum = np.log10((data[:, mass_ind]+data[:, -2]+data[:, -3])/data[0, mass_ind])
         return timeseries, norm_mass, cgout, wgout, sum
 
-def hst_entrainment(run, vwind):
+def hst_entrainment(run, vwind, threshold=0.2):
         data = np.loadtxt(os.path.join(run, 'out/parthenon.out1.hst'))
         vboost = data[:, -1]
+        correction = 0
+
+        for i in range(10, len(vboost)):
+            if vboost[i] < 0.5 and vboost[i-1] > 1.0:  # heuristically detect a reset
+                correction = vboost[i-1]
+            vboost[i] += correction
         if np.shape(data)[1] >= 17:
             mass = data[:,11]
             vx2 = abs(data[:,13])/(mass)
@@ -53,6 +60,13 @@ def hst_entrainment(run, vwind):
             mass = data[:,10]
             vx2 = abs(data[:,12])/(mass)
         delta_v = (vwind - (vx2 + vboost))/vwind
+
+        restart_fix = 0
+        diffs = np.diff(delta_v)
+        jumps = np.where(np.abs(diffs) > threshold)[0]
+        for j in jumps:
+            restart_fix += delta_v[j] - delta_v[j+1]
+            delta_v[j+1:] += restart_fix
         timeseries = data[:, 0]
         
         return timeseries, delta_v
@@ -67,7 +81,12 @@ if __name__ == "__main__":
 
     fig = plt.figure(figsize=(8, 9))
     gs = gridspec.GridSpec(2, 3, width_ratios=[1, 1, 0.08], wspace=0.1, hspace=0.1, figure=fig)
-    ax = np.array([[fig.add_subplot(gs[i, j]) for j in range(2)] for i in range(2)]).reshape(2, 2)
+    ax = np.empty((2, 2), dtype=object)
+    ax[0, 0] = fig.add_subplot(gs[0, 0])
+    ax[0, 1] = fig.add_subplot(gs[0, 1])
+    ax[1, 0] = fig.add_subplot(gs[1, 0], sharex=ax[0, 0])
+    ax[1, 1] = fig.add_subplot(gs[1, 1], sharex=ax[0, 1])
+
 
     
     
@@ -81,14 +100,14 @@ if __name__ == "__main__":
 
     for j, run in enumerate(run_paths):
         all_runs = glob.glob(os.path.join(run, 'fv*'))
-        if j == 1:
-            other_dirs = glob.glob('/viper/ptmp/ferhi/d40rcl/01kc/fv*')
-            all_runs.extend(other_dirs)
-            more_dirs = glob.glob('/viper/ptmp/ferhi/d80rcl/01ekc/fv*')
-            all_runs.extend(more_dirs)
-        if j ==0: 
-            other_dirs = glob.glob('/viper/ptmp/ferhi/d20rcl/02ekc/fv*')
-            all_runs.extend(other_dirs)
+        #if j == 1:
+            #other_dirs = glob.glob('/viper/ptmp/ferhi/d40rcl/01kc/fv*')
+            #all_runs.extend(other_dirs)
+            #more_dirs = glob.glob('/viper/ptmp/ferhi/d80rcl/01ekc/fv*')
+            #all_runs.extend(more_dirs)
+        #if j ==0: 
+            #other_dirs = glob.glob('/viper/ptmp/ferhi/d20rcl/02ekc/fv*')
+            #all_runs.extend(other_dirs)
         for run_name in all_runs:
             if "/viper/ptmp/ferhi/d20rcl/02ekc/fv03_lowres_raven" in run_name: continue
             if "scaleless" in run_name: continue
@@ -97,32 +116,53 @@ if __name__ == "__main__":
             code_time_cgs = float(sim.reader.get('units', 'code_time_cgs'))
             code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
             files = np.sort(glob.glob(os.path.join(run_name, 'out/parthenon.prim.*.phdf')))
-            depth = 10 * float(sim.reader.get('problem/wtopenrun', 'depth'))
+            depth = float(sim.reader.get('problem/wtopenrun', 'depth'))
             base_fv = int(run_name.split('fv')[-1][:2])
             fv = 10 ** (-base_fv)
+            dt = float(sim.reader.get('parthenon/output1', 'dt'))
+            dt2 = float(sim.reader.get('parthenon/output0', 'dt'))
             
             
-            tccfact =  depth #if sim.tcoolmix/sim.tcc >= 0.1 else 0.1
-            #tsh =  fv * depth * sim.R_cloud / sim.v_wind #np.sqrt( fv**-0.6 + 100)
-            tsh =  (fv**-(1/3) + 10) * 0.1 * sim.R_cloud / sim.v_wind if sim.tcoolmix/sim.tcc >= 0.1 else 0.1 * sim.tcc
-            tsh = depth * fv * sim.R_cloud / sim.v_wind 
-            print(run_name)
+            tsh =  depth * sim.R_cloud / sim.v_wind
+
+            t1 = sim.R_cloud / sim.v_wind
+            t2 = 10 * fv * depth *  sim.R_cloud / sim.v_wind
+
+            # Linear sum
+            t_linear = t1 + t2
+
             try:
                 timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run_name, gout)
                 v_wind = sim.v_wind / code_length_cgs * code_time_cgs
                 times, v_normalised = hst_entrainment(run_name, vwind=v_wind)
             except Exception as e:
                 continue
-            mask = ~np.isnan(norm_mass)
-            norm_mass = norm_mass[mask]
-            timeseries = timeseries[mask]
-            color = sm.to_rgba(tccfact)
-
+            #mask = ~np.isnan(norm_mass)
+            #norm_mass = norm_mass[mask]
+            #timeseries = timeseries[mask]
+            color = sm.to_rgba(10*depth)
 
             label = run.split('/')[-1]
-            plt.style.use('custom_plot')
-            ax[0,j].plot(timeseries * code_time_cgs / tsh, norm_mass, color=color, linestyle=linestyles[base_fv], alpha=0.8)
-            ax[1,j].plot(times * code_time_cgs / tsh, v_normalised, color=color, linestyle=linestyles[base_fv], alpha=0.8)
+            plt.style.use('custom_plot') 
+
+            time_axis = timeseries * code_time_cgs 
+            time_axis2 = times * code_time_cgs 
+            idx = (np.abs(time_axis - tsh)).argmin()
+            idx2 = (np.abs(time_axis2 - tsh)).argmin()
+            if "fv03" in run_name:
+                print(time_axis[idx] / t_linear, idx2)
+
+            t_shift = 0.65 * tsh if j ==1 else 0
+            correction_index_mass = (np.abs(time_axis - t_shift)).argmin()
+            correction_index_v = (np.abs(time_axis2 - t_shift)).argmin()
+
+
+            ax[0,j].plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], color=color, linestyle=linestyles[base_fv], alpha=0.8)
+            ax[1,j].plot((times * code_time_cgs - t_shift)/ t_linear, v_normalised, color=color, linestyle=linestyles[base_fv], alpha=0.8)
+            #ax[0, j].plot(time_axis[idx]/t_linear, norm_mass[idx], marker='o', color='black', zorder=10, alpha = 0.8)  
+            #ax[1, j].plot(time_axis2[idx2]/t_linear, v_normalised[idx2], marker='o', color='black', zorder=10, alpha = 0.8)
+            
+            ax[0,1].set_xlim(left = 0, right = 30)
 
  
 
@@ -150,7 +190,8 @@ cax.tick_params(axis='y', which='both', color='white', labelcolor='black', direc
 ax[0, 0].set_ylabel(r'$\log\left(m(T < 2T_\mathrm{cl}) / m_0\right)$', labelpad=8)
 ax[1, 0].set_ylabel(r'$\Delta v_\mathrm{shear} / v_w$', labelpad = 8)
 for axs in [ax[1, 0], ax[1, 1]]:
-    axs.set_xlabel(r'$t  [\tilde{t}_{cc}]$')
+    axs.set_xlabel(r'$\tau$')
+    
 
 for axs in [ax[0, 0], ax[0, 1]]:
     axs.set_ylim(-3, 1)
@@ -160,5 +201,5 @@ plt.setp(ax[1,1].get_yticklabels(), visible=False)
 plt.setp(ax[0,0].get_xticklabels(), visible=False)
 plt.setp(ax[0,1].get_xticklabels(), visible=False)
 
-plt.savefig('/u/ferhi/Figures/comparative_mass_evolution.png', dpi = 300, bbox_inches = 'tight')
+plt.savefig('/u/ferhi/Figures/comparative_masscc_evolution.png', dpi = 300, bbox_inches = 'tight')
 plt.show()

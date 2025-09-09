@@ -182,10 +182,91 @@ class SingleCloudCC:
         # Convert bytes back to NumPy array
         ICs = np.frombuffer(raw_data, dtype=dtype).reshape(expected_shape)
         return ICs, kval
+    
+# --------------------
+# Stratified box generation functions
+# --------------------
+
+class StratifiedBox:
+    def __init__(self, filename_input, dir):
+        self.filename = filename_input
+        self.dir = dir
+        self.reader = ut.AthenaPKInputFileReader(filename_input)
+        self._initialize_constants()
+        self._load_simulation_parameters()
+        self._load_cooling_table(dir)
+
+    def _initialize_constants(self):
+        global gamma, mbar, mu_H
+        gamma = float(self.reader.get('hydro', 'gamma'))
+        He_mass_fraction = float(self.reader.get('hydro', 'He_mass_fraction'))
+        mu_H = 1.0
+        mu = 1 / (He_mass_fraction * 3 / 4 + (1 - He_mass_fraction) * 2)
+        mbar = mu * ut.constants.uam
+        self.mbar = mbar
+
+    def _load_simulation_parameters(self):
+        self.surface_density= float(self.reader.get('problem/stratified_box', 'surface_density'))
+        self.T_base = float(self.reader.get('problem/stratified_box', 'T_base'))
+        self.a_over_H = float(self.reader.get('problem/stratified_box', 'a_over_H'))
+
+
+    def _load_cooling_table(self, dir):
+        rel_path = self.reader.get('cooling', 'table_filename')
+        cooling_table_path = os.path.abspath(os.path.join(dir, rel_path))
+        try:
+            data = np.loadtxt(cooling_table_path)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Cooling table not found: {cooling_table_path}")
+        global cooling_table_logT_cgs, cooling_table_logLambda_cgs
+        cooling_table_logT_cgs, cooling_table_logLambda_cgs = data[:, 0], data[:, 1]
+
+
+    def _scale_mesh(self, axis_scaling):
+        for axis in ['x1', 'x2', 'x3']:
+            self.reader.change_aspect_xlim('parthenon/mesh', f'{axis}min', axis_scaling)
+            self.reader.change_aspect_xlim('parthenon/mesh', f'{axis}max', axis_scaling)
+        self.reader.save()
+
+    def _enforce_cartesian_grid(self):
+        nx1 = int(self.reader.get('parthenon/mesh', 'nx1'))
+        nx2 = int(self.reader.get('parthenon/mesh', 'nx2'))
+        xmin1, xmax1 = float(self.reader.get('parthenon/mesh', 'x1min')), float(self.reader.get('parthenon/mesh', 'x1max'))
+        xmin2, xmax2 = float(self.reader.get('parthenon/mesh', 'x2min')), float(self.reader.get('parthenon/mesh', 'x2max'))
+        cell_size_x = (xmax1 - xmin1) / nx1
+        cell_size_y = (xmax2 - xmin2) / nx2
+        y_adjustment = cell_size_x * nx2 - (xmax2 - xmin2)
+        self.reader.set_('parthenon/mesh', 'x2max', (xmax2 + abs(xmax2)/(xmax2 - xmin2)*y_adjustment))
+        self.reader.set_('parthenon/mesh', 'x2min', (xmin2 - abs(xmin2)/(xmax2 - xmin2)*y_adjustment))
+        self.reader.save()
+    
+    def enlarge_dim(self, increase_factor, axs):
+        for axis in axs:
+            if axis ==2: fmin = -0.1; fmax = 0.9
+            else: fmin = -0.5; fmax = 0.5
+            xmin2, xmax2 = float(self.reader.get('parthenon/mesh', f'x{axis}min')), float(self.reader.get('parthenon/mesh', f'x{axis}max'))
+            nx2_per_m = int(self.reader.get('parthenon/meshblock', f'nx{axis}'))
+            meshblocks = int(self.reader.get('parthenon/mesh', f'nx{axis}')) / nx2_per_m
+            if increase_factor > 1:
+                enlarge_by = math.ceil(increase_factor*meshblocks)
+            elif increase_factor  <= 1:           
+                enlarge_by = math.floor(increase_factor*meshblocks)
+            cell_size = (xmax2 - xmin2) / int(self.reader.get('parthenon/mesh', f'nx{axis}'))
+            self.reader.set_('parthenon/mesh', f'nx{axis}', nx2_per_m * enlarge_by)
+            self.reader.set_('parthenon/mesh', f'x{axis}max', fmax*cell_size * nx2_per_m * enlarge_by)
+            self.reader.set_('parthenon/mesh', f'x{axis}min', fmin*cell_size * nx2_per_m * enlarge_by)
+            self.reader.save()
+        self._enforce_cartesian_grid()
 
 def get_c_s(T):
     return np.sqrt(gamma * ut.constants.kb * T / mbar)
 
+def get_t_cool_cgs(rho, T, mbar ):
+    e = ut.constants.kb * T / (gamma - 1) / mbar
+    log_lambda = np.interp(np.log10(T), cooling_table_logT_cgs, cooling_table_logLambda_cgs)
+    Lambda = 10**log_lambda
+    n_H = rho / (mu_H * ut.constants.mh)
+    return rho * e / (n_H**2 * Lambda)
 
 def get_t_cool(n, T):
     rho = n * mbar
@@ -195,6 +276,25 @@ def get_t_cool(n, T):
     n_H = rho / (mu_H * ut.constants.mh)
     return rho * e / (n_H**2 * Lambda)
 
+
+def get_t_cool_min(rho, T, mbar, Tmin=1e4, Tmax=1e6):
+    pressure_value = (rho * ut.constants.kb * T) / mbar 
+
+    def cooling_function(T, pressure_value):
+        return ut.constants.kb**2 * T**2 / abs(pressure_value * 10**np.interp(np.log10(T), cooling_table_logT_cgs, cooling_table_logLambda_cgs))
+    
+    result = minimize_scalar(
+        cooling_function, 
+        bounds=(Tmin, Tmax), 
+        args=(pressure_value), 
+        method='bounded'
+    )
+    if result.success:
+        print("This is the temperature at minimum:", result.x)
+        return cooling_function(result.x, pressure_value)
+    else:
+        raise RuntimeError("Minimization did not converge.")
+    
 
 def get_l_shatter(P):
     def l_shatter_func(T):
@@ -241,8 +341,20 @@ def estimate_mach_from_v_wind(v_wind_desired, gamma, pressure, rho_amb):
 if __name__ == "__main__":
     
     localDir = os.getcwd()
-    sim = SingleCloudCC(os.path.join(localDir, 'ism.in'), dir=localDir)
+    sim = StratifiedBox(os.path.join(localDir, 'strat.in'), dir=localDir)
     command = str.lower(sys.argv[1])
+    match command:
+        case "check":
+            sim._enforce_cartesian_grid()          
+        case "enlarge_y":
+            sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1,
+                        axs=[2])
+        case "enlarge_x":
+            sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1, 
+                        axs = [1,3])
+
+
+    """
     match command:
         case "check":
             sim._modify_shock_mach()
@@ -262,3 +374,4 @@ if __name__ == "__main__":
             sim._modify_shock_mach()
         case _:
             raise ValueError("Invalid choice: pick amongst checking the current survival ratio, 'check', or adjusting to new ratio, 'adjust' followed by your new t_coolmix/t_cc value.")
+        """

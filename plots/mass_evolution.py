@@ -123,17 +123,33 @@ if __name__ == "__main__":
         code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
         files = np.sort(glob.glob(os.path.join(run, 'out/parthenon.prim.*.phdf')))
         depth = float(sim.reader.get('problem/wtopenrun', 'depth'))
+        rho_wind = float(sim.reader.get('problem/wtopenrun', 'rho_wind_cgs'))
+        rho_cloud = float(sim.reader.get('problem/wtopenrun', 'rho_cloud_cgs'))
+        chi = rho_cloud / rho_wind
+        dt = float(sim.reader.get('parthenon/output1', 'dt'))
+        dt2 = float(sim.reader.get('parthenon/output0', 'dt'))
+            
+        
         try:
             fv = float(sim.reader.get('problem/wtopenrun', 'fv'))
             base_fv = int(-np.log10(fv))
         except:
             base_fv = int(run.split('fv')[-1][:2])
             fv = 10 ** (-base_fv)
+
+
+        tsh =  depth * sim.R_cloud / sim.v_wind
+
+        t1 = np.sqrt(chi) * 0.1 * sim.R_cloud / sim.v_wind
+        t2 = np.sqrt(chi) * fv * depth *  sim.R_cloud / sim.v_wind
+        print("This is compression lim:", (sim.tcoolmix * sim.v_wind )/ 0.1 / sim.R_cloud)
+
+        # Linear sum
+        t_linear =  t2 
         
         
         tccfact =  depth if sim.tcoolmix/sim.tcc >= 0.1 else 0.1
-        tsh =  (10* fv * sim.R_cloud + (1-fv)*fv**-0.3*sim.R_cloud) * tccfact  / sim.v_wind #np.sqrt( fv**-0.6 + 100)
-        tsh =  20 * (fv**-0.3 + 100) * 0.1 * sim.R_cloud / sim.v_wind
+
         
         #if "fv01_narrow" in run: plot_hst = False; plot_yt = True
         #if "v02" in run: continue
@@ -149,10 +165,15 @@ if __name__ == "__main__":
             timeseries = timeseries[mask]
             color = sm.to_rgba(tccfact)
 
+            time_axis = timeseries * code_time_cgs 
+            idx = (np.abs(time_axis - tsh)).argmin()
+            t_shift = 0.65 * tsh if j ==1 else 0
+            correction_index_mass = (np.abs(time_axis - t_shift)).argmin()
+
 
             label = run.split('/')[-1]
             plt.style.use('custom_plot')
-            ax.plot(timeseries * code_time_cgs / tsh, norm_mass, color=color, linestyle=linestyles[base_fv], alpha=0.8)
+            ax.plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], color=color, linestyle=linestyles[base_fv], alpha=0.8)
             if np.sum(cgout) > 10*len(cgout)*1e-22:
                 ax.plot(timeseries * code_time_cgs / tsh, cgout, color=COLOURS[j],  alpha = 0.5)
             if np.sum(wgout) > 10*len(cgout)*1e-22:
@@ -174,29 +195,30 @@ if __name__ == "__main__":
                 plt.scatter(ts, np.log10(coldg/initial_mass), label=label, color='blue')
                 print(f"Cold gas mass: {np.log10(coldg/initial_mass)}")
         plot_hst = True; plot_yt = False
-linestyles = {1:'-', 0:'--', 3:'-.', 2:':'}
+    linestyles = {1:'-', 0:'--', 3:'-.', 2:':'}
 
-fv_legend_elements = [
-    Line2D([0], [0], color='black', linestyle='-', label=r'$f_v = 10^{\mathrm{-1}}$'),
-    Line2D([0], [0], color='black', linestyle=':', label=r'$f_v = 10^{\mathrm{-2}}$'),
-    Line2D([0], [0], color='black', linestyle='-.', label=r'$f_v = 10^{\mathrm{-3}}$'),
-]
+    fv_legend_elements = [
+        Line2D([0], [0], color='black', linestyle='-', label=r'$f_v = 10^{\mathrm{-1}}$'),
+        Line2D([0], [0], color='black', linestyle=':', label=r'$f_v = 10^{\mathrm{-2}}$'),
+        Line2D([0], [0], color='black', linestyle='-.', label=r'$f_v = 10^{\mathrm{-3}}$'),
+    ]
 
-# Add to plot
-legend1 = ax.legend(
-    handles=fv_legend_elements,
-    loc='upper center',
-    ncol=3,
-)
-ax.add_artist(legend1) 
-ax.set_ylabel(r'$log(m/m_0)$')
-ax.set_xlabel(r't [$\tilde t_{cc} $]')
-ax.set_ylim(bottom=-3, top=1.)
+    # Add to plot
+    legend1 = ax.legend(
+        handles=fv_legend_elements,
+        loc='upper center',
+        ncol=3,
+    )
+    ax.add_artist(legend1) 
+    ax.set_ylabel(r'$log(m/m_0)$')
+    ax.set_xlabel(r't [$\tilde t_{cc} $]')
+    ax.set_ylim(bottom=-3, top=1.)
 
-cbar = fig.colorbar(sm, ax=ax, pad=0.01)
-cbar.set_label(r'$L_{\mathrm{ISM}} [r_{\mathrm{cloud}}]$')
+    cbar = fig.colorbar(sm, ax=ax, pad=0.01)
+    cbar.set_label(r'$L_{\mathrm{ISM}} [r_{\mathrm{cloud}}]$')
 
-# Save and show
-plt.tight_layout()
-plt.savefig(f'/u/ferhi/Figures/{saveFile}mevol.png')
-plt.show()
+    # Save and show
+    print(f"Saved to: /u/ferhi/Figures/{saveFile}mevol.png")
+    plt.tight_layout()
+    plt.savefig(f'/u/ferhi/Figures/{saveFile}mevol.png')
+    plt.show()

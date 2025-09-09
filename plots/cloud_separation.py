@@ -161,7 +161,9 @@ def compute_distances_for_dimension(dimensions, p_values, sigmas):
         threshold = np.percentile(smoothed_field, 100 * (1 - p))
         binary_field = smoothed_field > threshold
 
+        print(f"Computing intercloud separation for size {binary_field.shape} and fv {p}:")
         result = compute_nn_distance_percolation(binary_field)
+        print(f"Average distance {result[0]}. \n \n")
 
         if result is not None:
             mean_distances.append(result[0])
@@ -176,6 +178,7 @@ def compute_distances_for_dimension(dimensions, p_values, sigmas):
 
 
 if __name__ == "__main__":
+    print("Welcome to this function!")
     parser = argparse.ArgumentParser(description="Run percolation simulations.")
     parser.add_argument("--N_procs", type=int, default=1, help="Number of parallel jobs (e.g., 1 for serial, -1 for all cores)")
     args = parser.parse_args()
@@ -189,12 +192,13 @@ if __name__ == "__main__":
     results_file = "percolation_results.pkl"
 
     # Try to load cached results
-    if False:# os.path.exists(results_file):
+    if os.path.exists(results_file):
         with open(results_file, "rb") as f:
             all_mean_distances, all_std_distances = pickle.load(f)
         print("Loaded cached results.")
-    if True:
+    else:
         # Compute results
+        print("Launching parallel jobs")
         results = Parallel(n_jobs=n_jobs, backend="loky")(
             delayed(compute_distances_for_dimension)(dim, p_values, sigma) for dim in dimensions_list
         )
@@ -210,12 +214,13 @@ if __name__ == "__main__":
             all_upper[dim] = upper
 
         # Save results
-        #with open(results_file, "wb") as f:
-        #    pickle.dump((all_mean_distances, all_std_distances), f)
+        with open(results_file, "wb") as f:
+            pickle.dump((all_mean_distances, all_std_distances), f)
         print("Saved computed results.")
 
     # Plotting
-    plt.figure(figsize=(8, 6))
+    plt.style.use('custom_plot')
+    plt.figure(figsize=(7, 5))
 
     colors = ['blue', 'green', 'red']  # Adjust colors as needed
     dmin = sigma[0]
@@ -223,6 +228,7 @@ if __name__ == "__main__":
     for i, dimensions in enumerate(dimensions_list):
         mean_distances = all_mean_distances[dimensions]
         std_distances = all_std_distances[dimensions]
+        upper = std_distances
         
         # Normalize by the minimum mean distance
         if dmin == None:
@@ -237,18 +243,22 @@ if __name__ == "__main__":
         plt.plot(p_values, new_mean_distances, 'o-', color=colors[i])
         plt.fill_between(p_values, new_mean_distances - std_distances_normalized, new_mean_distances + upper, alpha=0.3, color=colors[i])
     plt.plot(p_values,  1 * p_values **(-1/3), linestyle='--', color = "black", label = r"$ d \propto {f_v}^{-1/3}$")
-    #plt.plot(p_values,  1 * p_values **(-0.2), linestyle='--')
-    #plt.plot(p_values,  1 * p_values **(-0.1), linestyle='--')
+    plt.vlines(8e-6, ymin=0, ymax=(8e-6)**(-1/3), linestyle = "dotted", color = 'grey', alpha=0.8)
+    plt.hlines((8e-6)**(-1/3), xmin=1e-6, xmax=8e-6, linestyle="dotted", color='grey', alpha=0.8)
+
+    plt.tick_params(axis='both', pad = 10)
 
         
     # Final plot settings
     plt.xlabel(r'$f_v$')
-    plt.ylabel(r'$d [r_{\rm cloud}]$')
+    plt.ylabel(r'$d_\mathrm{sep} [r_{\rm cl}]$')
     plt.xscale('log')
     plt.yscale("log")
+    plt.xlim(1e-6, 1e-1)
+    plt.grid()
     plt.ylim(bottom = 1)
     plt.legend()
     plt.grid()
-    plt.savefig(f'cloud_separation_8rcl_{dimensions[0]}_.png')
+    plt.savefig(f'cloud_separation_8rcl_{dimensions[0]}_.png', dpi=300, bbox_inches = 'tight')
     plt.show()
 

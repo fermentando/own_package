@@ -61,7 +61,8 @@ def plot_vturb_all_runs(run_list, outdir):
                     print(f"[WARNING] hdf_turb returned None for run: {run}")
                     continue 
                 t, vturb, vturb_err_lower, vturb_err_upper = result
-                tsh = t * dt
+                
+                tsh = t * dt / depth * 10 
 
                 ax[m].plot(tsh, vturb / cs_gas, color=color, linestyle=linestyle, alpha=0.9)
                 ax[m].fill_between(
@@ -73,9 +74,9 @@ def plot_vturb_all_runs(run_list, outdir):
             except FileNotFoundError as e:
                 print(e)
 
-        ax[m].set_xlim(right=20)
+        ax[m].set_xlim(left = 0, right=10)
         ax[m].grid(True)
-        ax[m].set_xlabel(r'$t [\tilde{t}_\mathrm{cc}]$')
+        ax[m].set_xlabel(r'$t [t_\mathrm{sh}]$')
         ax[m].set_ylim(top=5)
 
     ax[0].set_ylabel(r'$v_{\mathrm{turb}} / c_{\mathrm{s,cold}}$')
@@ -106,7 +107,8 @@ def plot_vturb_all_runs(run_list, outdir):
 
     # Save
     os.makedirs(outdir, exist_ok=True)
-    plt.savefig(os.path.join(outdir, "yav_vturb_cold_hot.png"), dpi=300, bbox_inches="tight")
+    plt.savefig(os.path.join(outdir, "yavsh_vturb_cold_hot.png"), dpi=300, bbox_inches="tight")
+    print(f"Saved figure to {outdir}/yavsh_vturb_cold_hot.png")
     plt.close()
 
 if __name__ == "__main__":

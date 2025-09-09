@@ -70,11 +70,12 @@ box = pv.Box(bounds=bounds)
 pl.add_volume(np.log10(rho), scalars="values", cmap=custom_cmap, clim=[-26.4, -24.4], opacity=opacity, show_scalar_bar=False)
 pl.add_mesh(box, color="white", style="wireframe", line_width=2)
 pl.camera_position = [eye0, (cn1 , cn2 , cn3+ 2 * rho.shape[2]), (1, 0, 0)]
-pl.screenshot("long_box.png", transparent_background=True, window_size=[7680, 4320])
+
+
+pl.screenshot("long_box.png", transparent_background=True, window_size=[11811, 6645])
 
 from PIL import Image
 
 img = Image.open("long_box.png")
 img = img.crop(img.getbbox())  # Automatically trims transparent edges
 img.save("long_box.png")
-

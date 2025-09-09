@@ -1,0 +1,95 @@
+<comment>
+problem = ISM against wind
+
+<job>
+problem_id = stratified_box
+bin_input_file = ICs.bp
+
+<parthenon/mesh>
+refinement = none
+nghost = 4
+nx1 = 128
+x1min = -500
+x1max = 500
+ix1_bc = periodic
+ox1_bc = periodic
+nx2 = 640
+x2min = -500.0
+x2max = 4500.0
+ix2_bc = outflow
+ox2_bc = outflow
+nx3 = 128
+x3min = -500
+x3max = 500
+ix3_bc = periodic
+ox3_bc = periodic
+pack_size = -1
+tracking = true
+
+<parthenon/meshblock>
+nx1 = 128
+nx2 = 128
+nx3 = 128
+
+<parthenon/time>
+integrator = vl2
+cfl = 0.20
+tlim = 10.0
+nlim = 1000000000
+ncycle_out_mesh = -500
+
+<hydro>
+fluid = euler
+eos = adiabatic
+riemann = hlle
+reconstruction = ppm
+gamma = 1.666666666666667
+first_order_flux_correct = true
+glmmhd_source = dedner_extended
+nscalars = 1
+Tfloor = 10000
+He_mass_fraction = 0.24
+
+<cooling>
+enable_cooling = false
+table_filename = /viper/ptmp/ferhi/cooling_tables/gnat-sternberg.cooling_1Z
+lambda_units_cgs = 1
+integrator = townsend
+max_iter = 100
+cfl = 0.1
+d_log_temp_tol = 1
+d_e_tol = 1
+Tceil = 1e6
+
+<units>
+code_length_cgs = 3.085677580962325e+18
+code_mass_cgs = 1.98841586e+33
+code_time_cgs = 3.15576e+13
+
+<refinement>
+type = maxdensity
+maxdensity_refine_above = 1e-4
+maxdensity_deref_below = 5e-5
+
+<problem/stratified_box>
+T_base = 1e6
+a_over_H = 0.1
+surface_density = 1e3
+rescale_code_time_to_tff = true
+
+<parthenon/output0>
+file_type = hdf5
+dt = 0.05
+variables = prim
+id = prim
+single_precision_output = true
+
+<parthenon/output1>
+file_type = hst
+dt = 0.05
+
+<parthenon/output2>
+file_type = rst
+dt = 1
+id = restart
+
