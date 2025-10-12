@@ -88,7 +88,7 @@ def load_params(filename_input):
     mesh_keys = ['nx1', 'nx2', 'nx3', 'x1min', 'x1max', 'x2min', 'x2max', 'x3min', 'x3max']
     mesh_params = {key: float(reader.get('parthenon/mesh', key)) for key in mesh_keys}
     
-    problem_keys = [ 'T_base', 'a_over_H', 'surface_density']
+    problem_keys = [ 'T_base', 'a_over_H', 'surface_density', 'r_cloud_inserted', 'T_cloud']
     problem_params = {key: float(reader.get('problem/stratified_box', key)) for key in problem_keys}
     
     gamma = float(reader.get('hydro', 'gamma'))
@@ -107,8 +107,9 @@ def generate_ICs(filename_input, filename='ICs.bp'):
     g0 = 2 * np.pi * ut.constants.G * params['surface_density'] * code_mass_cgs / (code_length_cgs)**2
     c_s = np.sqrt(params['T_base'] / mbar_over_kb)
     H = c_s**2/ g0
-    rho_0 = params['surface_density'] * code_mass_cgs / (code_length_cgs)**2 \
-        / (math.sqrt(2*math.pi) * H)
+    rho_0 = (
+        params['surface_density'] * code_mass_cgs / code_length_cgs**2
+    ) / (2.0 * H)
     print(f"c_s = {c_s/1e5:.3e} km/s")
     print(f"Using rho_0 = {rho_0:.3e} g/cm^3, H = {H/code_length_cgs:.3e} code units, g0 = {g0:.3e} cm/s^2")
 
@@ -120,7 +121,16 @@ def generate_ICs(filename_input, filename='ICs.bp'):
                     )
     mom = np.zeros_like(full_box_rho)
     en = 0.5 * mom**2 / full_box_rho +  params['T_base'] / mbar_over_kb * full_box_rho / (params['gamma'] - 1)
-    fields = (full_box_rho, mom, en)
+
+    # Insert cloud
+    rho_with_cloud, en_with_cloud = insert_sphere(full_box_rho, en, r=params['r_cloud_inserted'] * code_length_cgs, 
+                            T_cloud=params['T_cloud'], 
+                            mbar_over_kb=mbar_over_kb, gamma=params['gamma'], T_base = params['T_base'],
+                            x_range=(params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
+                            y_range=(params['x2min'] * code_length_cgs, params['x2max'] * code_length_cgs),
+                            z_range=(params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs),
+                            inplace=False)
+    fields = (rho_with_cloud, mom, en_with_cloud)
     
     MeshBlockSize = (mbl3, mbl2, mbl1)
     MeshSize = (nx3, nx2, nx1)
@@ -147,7 +157,7 @@ def generate_ICs(filename_input, filename='ICs.bp'):
 # ICs set-up
 # -----------------------------
 
-def isothermal_strat(nx, ny, nz, rho0, a, H, x_range, y_range, z_range):
+def isothermal_strat(nx, ny, nz, rho0, a, H_s, x_range, y_range, z_range):
 
     # Create the 3D grid
     x = np.linspace(x_range[0], x_range[1], nx)
@@ -156,9 +166,60 @@ def isothermal_strat(nx, ny, nz, rho0, a, H, x_range, y_range, z_range):
 
     X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
     # Compute the density
-    rho = rho0 * np.exp(-a * (np.sqrt(1 + (Y / (a * H))**2) - 1))
+    rho = rho0 * (1.0 / np.cosh(Y / H_s))**2
 
     return rho
+
+
+def insert_sphere(density, energy,
+                  r,
+                  T_cloud,
+                  mbar_over_kb,
+                  gamma,
+                  T_base,
+                  x_range,
+                  y_range,
+                  z_range,
+                  inplace=True):
+
+    if density.shape != energy.shape:
+        raise ValueError("density and energy must have the same shape (ny, nx, nz)")
+    nx, ny, nz = density.shape
+
+
+    x = np.linspace(x_range[0], x_range[1], nx)
+    y = np.linspace(y_range[0], y_range[1], ny)
+    z = np.linspace(z_range[0], z_range[1], nz)
+
+    x_center = 0.5 * (x_range[0] + x_range[1])
+    z_center = 0.5 * (z_range[0] + z_range[1])
+    y_center = y_range[1] - 3 * r
+
+    print(f'Cloud of radius {r/((y_range[1]-y_range[0])/ny):.3f} cells inserted at ({x_center}, {y_center}, {z_center})')
+
+
+    if r <= 0:
+        print("WARNING: r must be positive. Defaulting to no cloud.")
+        return density, energy
+    if not (y_range[0] <= y_center <= y_range[1]):
+        raise ValueError("Computed y_center is outside the provided y_range."
+                         " Check r and y_range values.")
+
+
+    X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+    mask = (X - x_center)**2 + (Y - y_center)**2 + (Z - z_center)**2 <= r**2
+
+    if not inplace:
+        density = density.copy()
+        energy = energy.copy()
+
+    rho_cloud = np.average(density[mask]) * T_base / T_cloud
+    density[mask] = rho_cloud
+    energy_value = (T_cloud / mbar_over_kb) * rho_cloud / (gamma - 1.0)
+    energy[mask] = energy_value
+
+    return density, energy
+
 
 
 if __name__ == "__main__":
@@ -169,5 +230,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     localDir = os.getcwd()
-    filename_input = os.path.join(localDir, 'strat.in')
+    filename_input = os.path.join(localDir, 'strat_simple.in')
     generate_ICs(filename_input=filename_input, filename='ICs.bp')
