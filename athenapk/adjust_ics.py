@@ -78,6 +78,7 @@ class SingleCloudCC:
         R_internal_units = self.R_cloud / float(self.reader.get('units', 'code_length_cgs'))
         xmin2, xmax2 = float(self.reader.get('parthenon/mesh', 'x2min')), float(self.reader.get('parthenon/mesh', 'x2max'))
         xmin1, xmax1 = float(self.reader.get('parthenon/mesh', 'x1min')), float(self.reader.get('parthenon/mesh', 'x1max'))
+        out1 = float(self.reader.get('parthenon/output0', 'dt'))
         cell_size_y = (xmax2 - xmin2) / nx2
         cloud_to_cell_ratio = R_internal_units / cell_size_y
         cloud_to_cell_0_1_ratio = 1/10 * R_internal_units / cell_size_y
@@ -85,6 +86,7 @@ class SingleCloudCC:
         length_x_to_cloud_ratio = (xmax1 - xmin1) / R_internal_units
         fv = float(self.reader.get('problem/wtopenrun', 'fv'))
         depth = float(self.reader.get('problem/wtopenrun', 'depth'))
+        tsh_out = out1 * self.tcc / depth / self.R_cloud * self.v_wind
 
         print(f"""
         >> Cloud properties <<
@@ -100,6 +102,14 @@ class SingleCloudCC:
         t_coolmix / t_cc = {self.Rcrit_x_surv_ratio / self.R_cloud:.3g}
         fv = {fv:.3g}
         depth = {depth:.3g} rcl
+        output cadence (t_shock) = {tsh_out:.3g}
+        Rcrit in pc = {self.Rcrit_x_surv_ratio * ut.constants.kpc_over_cm * 1e3:.3g}
+        n0 = {self.rho_cloud/self.mbar:.3g}
+        pressure = {self.rho_cloud/self.mbar * self.T_cloud:.3e} dyne/cm^2
+        1/pressure = {1/(self.rho_cloud/self.mbar * self.T_cloud):.3e} cm^3/dyne
+        T_cloud (^5/2) = {(self.T_cloud)**2.5:.3g}
+        lamba = {1/self.n_mix/get_t_cool(self.rho_cloud/self.mbar, self.T_cloud) * ut.constants.kb * 1e4:.3g} erg cm^3/s
+        r_crit = {self.tcoolmix * self.v_wind / 10 :.3g} cm
         """)
 
     def reset_survival(self, ratio, rdx=8):
@@ -195,6 +205,7 @@ class StratifiedBox:
         self._initialize_constants()
         self._load_simulation_parameters()
         self._load_cooling_table(dir)
+        #self._set_t_corr()
 
     def _initialize_constants(self):
         global gamma, mbar, mu_H
@@ -205,10 +216,11 @@ class StratifiedBox:
         mbar = mu * ut.constants.uam
         self.mbar = mbar
 
-    def _load_simulation_parameters(self):
+    def _load_simulation_parameters(self):  
         self.surface_density= float(self.reader.get('problem/stratified_box', 'surface_density'))
         self.T_base = float(self.reader.get('problem/stratified_box', 'T_base'))
         self.a_over_H = float(self.reader.get('problem/stratified_box', 'a_over_H'))
+
 
 
     def _load_cooling_table(self, dir):
@@ -240,6 +252,39 @@ class StratifiedBox:
         self.reader.set_('parthenon/mesh', 'x2min', (xmin2 - abs(xmin2)/(xmax2 - xmin2)*y_adjustment))
         self.reader.save()
     
+    def _set_t_corr(self):
+        T0 = float(self.reader.get('problem/stratified_box', 'T_base'))
+        #rho0 = float(self.reader.get('problem/turbulence', 'rho0'))
+        mach = float(self.reader.get('problem/turbulence', 'Mach_drive'))
+        k_peak = float(self.reader.get('problem/turbulence', 'kpeak'))
+        Lymin, Lymax = float(self.reader.get('parthenon/mesh', 'x2min')), float(self.reader.get('parthenon/mesh', 'x2max'))
+        L_box = Lymax - Lymin
+        cs = get_c_s(T0)  # Sound speed in the medium
+        v_turb = cs * mach
+
+        #p0 = rho0 * ut.constants.kb * T0 / mbar  # Reference pressure
+        dfloor = 1e-24*0.01
+
+        L_drive = L_box/k_peak
+        t_eddy = L_drive/v_turb
+        accel_rms  =  v_turb**2 / (L_drive) 
+
+        tlim = 8*t_eddy
+        dt_hst = 0.01*t_eddy
+        dt_hdf = 0.1*t_eddy
+        dt_rst = 0.5*t_eddy
+
+        self.reader.set_('problem/turbulence', 'corr_time', t_eddy)
+        self.reader.set_('hydro', 'dfloor', dfloor)
+        self.reader.set_('problem/turbulence', 'accel_rms', accel_rms)
+        self.reader.set_('parthenon/time', 'tlim', tlim)
+        self.reader.set_('parthenon/output1', 'dt', dt_hst)
+        self.reader.set_('parthenon/output2', 'dt', dt_hdf)
+        self.reader.set_('parthenon/output3', 'dt', dt_rst)
+        self.reader.save()
+        print(f"Driving correlation time set to {t_eddy:.3e} s")
+
+
     def enlarge_dim(self, increase_factor, axs):
         for axis in axs:
             if axis ==2: fmin = -0.1; fmax = 0.9
@@ -257,6 +302,7 @@ class StratifiedBox:
             self.reader.set_('parthenon/mesh', f'x{axis}min', fmin*cell_size * nx2_per_m * enlarge_by)
             self.reader.save()
         self._enforce_cartesian_grid()
+    
 
 def get_c_s(T):
     return np.sqrt(gamma * ut.constants.kb * T / mbar)
@@ -265,7 +311,7 @@ def get_t_cool_cgs(rho, T, mbar ):
     e = ut.constants.kb * T / (gamma - 1) / mbar
     log_lambda = np.interp(np.log10(T), cooling_table_logT_cgs, cooling_table_logLambda_cgs)
     Lambda = 10**log_lambda
-    n_H = rho / (mu_H * ut.constants.mh)
+    n_H = rho / mbar
     return rho * e / (n_H**2 * Lambda)
 
 def get_t_cool(n, T):
@@ -273,7 +319,7 @@ def get_t_cool(n, T):
     e = ut.constants.kb * T / (gamma - 1) / mbar
     log_lambda = np.interp(np.log10(T), cooling_table_logT_cgs, cooling_table_logLambda_cgs)
     Lambda = 10**log_lambda
-    n_H = rho / (mu_H * ut.constants.mh)
+    n_H = rho / mbar
     return rho * e / (n_H**2 * Lambda)
 
 
@@ -341,37 +387,41 @@ def estimate_mach_from_v_wind(v_wind_desired, gamma, pressure, rho_amb):
 if __name__ == "__main__":
     
     localDir = os.getcwd()
-    sim = StratifiedBox(os.path.join(localDir, 'strat.in'), dir=localDir)
-    command = str.lower(sys.argv[1])
-    match command:
-        case "check":
-            sim._enforce_cartesian_grid()          
-        case "enlarge_y":
-            sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1,
-                        axs=[2])
-        case "enlarge_x":
-            sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1, 
-                        axs = [1,3])
+    if os.path.isfile(os.path.join(localDir, "ism.in")):
+        sim = SingleCloudCC(os.path.join(localDir, 'ism.in'), dir=localDir)
+        command = str.lower(sys.argv[1])
+        match command:
+            case "check":
+                sim._modify_shock_mach()
+                sim.state_ICs()
+            case "adjust":
+                print(float(sys.argv[2]))
+                sim.reset_survival(float(sys.argv[2]), 8)
+            case "enlarge_y":
+                sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1,
+                            axs=[2])
+            case "enlarge_x":
+                sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1, 
+                            axs = [1,3])
+            case "res":
+                sim.set_rin_res(resol_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 8)
+            case "mach_shock":
+                sim._modify_shock_mach()
+            case _:
+                raise ValueError("Invalid choice: pick amongst checking the current survival ratio, 'check', or adjusting to new ratio, 'adjust' followed by your new t_coolmix/t_cc value.")
+        
+
+    elif os.path.isfile(os.path.join(localDir, "strat.in")):
+        sim = StratifiedBox(os.path.join(localDir, 'strat.in'), dir=localDir)
+        command = str.lower(sys.argv[1])
+        match command:
+            case "check":
+                sim._enforce_cartesian_grid()          
+            case "enlarge_y":
+                sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1,
+                            axs=[2])
+            case "enlarge_x":
+                sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1, 
+                            axs = [1,3]) 
 
 
-    """
-    match command:
-        case "check":
-            sim._modify_shock_mach()
-            sim.state_ICs()
-        case "adjust":
-            print(float(sys.argv[2]))
-            sim.reset_survival(float(sys.argv[2]), 8)
-        case "enlarge_y":
-            sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1,
-                        axs=[2])
-        case "enlarge_x":
-            sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1, 
-                        axs = [1,3])
-        case "res":
-            sim.set_rin_res(resol_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 8)
-        case "mach_shock":
-            sim._modify_shock_mach()
-        case _:
-            raise ValueError("Invalid choice: pick amongst checking the current survival ratio, 'check', or adjusting to new ratio, 'adjust' followed by your new t_coolmix/t_cc value.")
-        """
