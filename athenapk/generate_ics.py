@@ -10,6 +10,7 @@ from adjust_ics import *
 import sys
 from joblib import Parallel, delayed
 from adios2 import Stream
+import adios2
 
 def reassemble_blocks(block_array):
     """
@@ -76,6 +77,24 @@ def gen_adios(MeshSize, MeshBlockSize, fields, filename):
     print(f"Saved 4D array {ICs.shape} to {saveDir}. Size: {os.path.getsize(saveDir)} bytes.")
     ICs_correct = reassemble_blocks(ICs)
     return ICs_correct.reshape(len(fields), nx3, nx2, nx1)
+
+
+def read_adios(filename):
+    """
+    Read an ADIOS2 .bp file and return the data as a numpy array
+    with shape (len(fields), nx3, nx2, nx1).
+    """
+    with adios2.open(filename, "r") as f:
+        for step in f:
+            # Get all available variable names (optional)
+            vars_info = f.available_variables()
+            print("Variables available:", list(vars_info.keys()))
+            ICs_np = step.read(filename.split('.bp')[0])
+            ICs_np = np.array(ICs_np)
+
+            print("Shape:", ICs_np.shape)
+            print("Data sample:", ICs_np.ravel()[:5])
+    return ICs_np
 
 # -------- Parameter Reading and Initial Conditions Output -------- #
 

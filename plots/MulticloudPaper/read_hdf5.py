@@ -15,7 +15,7 @@ def read_hdf5(filename=None, fields=['rho'], n_jobs=1):
         filename = "/raven/ptmp/ferhi/ISM_slab/100kc/fv01e/out/parthenon.prim.00007.phdf"
 
     # Load code units outside the parallel block
-    reader = ut.AthenaPKInputFileReader(os.path.abspath(os.path.join(filename, "../strat.in")))
+    reader = ut.AthenaPKInputFileReader(os.path.abspath(os.path.join(filename, "../../ism.in")))
     code_units_length = float(reader.get('units', 'code_length_cgs'))
     code_units_time = float(reader.get('units', 'code_time_cgs'))
     code_units_mass = float(reader.get('units', 'code_mass_cgs'))
