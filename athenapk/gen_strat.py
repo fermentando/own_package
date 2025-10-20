@@ -10,76 +10,11 @@ from adjust_ics import *
 import sys
 from joblib import Parallel, delayed
 from adios2 import Stream
+from scipy.special import k1
+from adioslib import *
 
 
-# -----------------------------
-# IOs assembly functions
-# -----------------------------
-def reassemble_blocks(block_array):
-    """
-    Reassemble a blocked array into the full global array.
-    
-    Parameters:
-      block_array: numpy array of shape (nBx, nBy, nBz, nFields, bs1, bs2, bs3)
-      
-    Returns:
-      full_array: numpy array of shape (nFields, nBx*bs1, nBy*bs2, nBz*bs3)
-    """
-    nBx, nBy, nBz, nFields, bs1, bs2, bs3 = block_array.shape
-    ICs_reordered = block_array.transpose(3,0,4,1,5,2,6)
-    ICs_full = ICs_reordered.reshape(nFields, nBx*bs1, nBy*bs2, nBz*bs3)
-    return ICs_full
 
-def gen_bin(fields, filename):
-    
-    print(len(fields))    
-    ICs = np.stack(fields, axis=3).astype(np.float64)
-    save_path = os.path.join(localDir, filename)
-    
-    with open(save_path, "wb") as f:
-       f.write(ICs.tobytes())
-    print(f"Saved ICs {ICs.shape} to {save_path} ({os.path.getsize(save_path)} bytes).")
- 
-    return ICs
-
-def gen_adios(MeshSize, MeshBlockSize, fields, filename):
-    
-    mbl3, mbl2, mbl1 = MeshBlockSize
-    nx3, nx2, nx1 = MeshSize
-    nz_blocks, ny_blocks, nx_blocks = (int(nx3/mbl3), int(nx2/mbl2), int(nx1/mbl1))
-    x_indices, y_indices, z_indices = np.indices((nx_blocks, ny_blocks, nz_blocks))
-
-    # Flatten the indices to get the logical locations for all blocks at once
-    LogicalLocations = np.vstack((x_indices.ravel(), y_indices.ravel(), z_indices.ravel())).T
-    n_blocks = LogicalLocations.shape[0]
-
-    # Pre-allocate block data
-    block_data = np.zeros((n_blocks, len(fields), mbl3, mbl2, mbl1), dtype=np.float64)
-    
-    meshblock_fields = []
-    for meshblock_field in fields:
-        meshblock_fields.append(meshblock_field.reshape(nx_blocks, mbl3, ny_blocks, mbl2, nz_blocks, mbl1))
-
-
-    for i, (loc_x, loc_y, loc_z) in enumerate(LogicalLocations):
-        for f in range(len(fields)):
-            block_data[i, f, :, :, :] = meshblock_fields[f][loc_x, :, loc_y, :, loc_z, :]
-
-        
-    ICs = block_data.reshape(nz_blocks, ny_blocks, nx_blocks, len(fields), mbl3, mbl2, mbl1)
-    saveDir = os.path.join(localDir, filename)
-    shape = ICs.shape # .tolist()
-    start = np.zeros_like(shape).tolist()
-    count = ICs.shape #.tolist()
-    nsteps = 1
-    
-    with Stream(saveDir, "w") as s:
-        for _ in s.steps(nsteps):
-            s.write(filename.split('.bp')[0], ICs, shape, start, count)
-    
-    print(f"Saved 4D array {ICs.shape} to {saveDir}. Size: {os.path.getsize(saveDir)} bytes.")
-    ICs_correct = reassemble_blocks(ICs)
-    return ICs_correct.reshape(len(fields), nx3, nx2, nx1)
 
 
 def load_params(filename_input):
@@ -95,7 +30,11 @@ def load_params(filename_input):
     
     return {**mesh_params, **problem_params, 'gamma': gamma, 'reader': reader}
 
-def generate_ICs(filename_input, filename='ICs.bp'):
+def generate_ICs(filename_input, filename='ICs.bp', localDir='.'):
+
+    full_box_rho, nghosts = gen_rho_strat(filename_input)
+    
+
     params = load_params(filename_input)
     stratified_box = StratifiedBox(filename_input, os.path.abspath(os.path.join(filename_input, '..')))
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
@@ -104,42 +43,50 @@ def generate_ICs(filename_input, filename='ICs.bp'):
     code_length_cgs = float(params['reader'].get('units', 'code_length_cgs'))
     code_mass_cgs = float(params['reader'].get('units', 'code_mass_cgs'))
 
-    g0 = 2 * np.pi * ut.constants.G * params['surface_density'] * code_mass_cgs / (code_length_cgs)**2
-    c_s = np.sqrt(params['T_base'] / mbar_over_kb)
-    H = c_s**2/ g0
-    rho_0 = (
-        params['surface_density'] * code_mass_cgs / code_length_cgs**2
-    ) / (2.0 * H)
-    print(f"c_s = {c_s/1e5:.3e} km/s")
-    print(f"Using rho_0 = {rho_0:.3e} g/cm^3, H = {H/code_length_cgs:.3e} code units, g0 = {g0:.3e} cm/s^2")
-
-
-    full_box_rho = isothermal_strat(nx1, nx2, nx3, rho_0, params['a_over_H'], H,
-                    (params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
-                    (params['x2min'] * code_length_cgs, params['x2max'] * code_length_cgs),
-                    (params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs)
-                    )
     mom = np.zeros_like(full_box_rho)
     en = 0.5 * mom**2 / full_box_rho +  params['T_base'] / mbar_over_kb * full_box_rho / (params['gamma'] - 1)
 
     # Insert cloud
-    rho_with_cloud, en_with_cloud = insert_sphere(full_box_rho, en, r=params['r_cloud_inserted'] * code_length_cgs, 
+    rho_with_cloud, mom_with_cloud, en_with_cloud = insert_sphere(full_box_rho, mom, en, r=params['r_cloud_inserted'] * code_length_cgs, 
                             T_cloud=params['T_cloud'], 
                             mbar_over_kb=mbar_over_kb, gamma=params['gamma'], T_base = params['T_base'],
                             x_range=(params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
                             y_range=(params['x2min'] * code_length_cgs, params['x2max'] * code_length_cgs),
                             z_range=(params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs),
                             inplace=False)
-    fields = (rho_with_cloud, mom, en_with_cloud)
+    
+    domain_rho = rho_with_cloud[:, nghosts:-nghosts, :]
+    domain_mom = mom_with_cloud[:, nghosts:-nghosts, :]
+    domain_en = en_with_cloud[:, nghosts:-nghosts, :]
+    fields_ICs = (domain_rho, domain_mom, domain_en)
+
+
+    inner_rho = rho_with_cloud[:, 0:nghosts, :]
+    inner_mom = mom_with_cloud[:, 0:nghosts, :]
+    inner_en = en_with_cloud[:, 0:nghosts, :]
+    fields_2d_inner = (inner_rho, inner_mom, inner_en)
+
+    outer_rho = rho_with_cloud[:, -nghosts:, :]
+    outer_mom = mom_with_cloud[:, -nghosts:, :]
+    outer_en = en_with_cloud[:, -nghosts:, :]
+    fields_2d_outer = (outer_rho, outer_mom, outer_en)
     
     MeshBlockSize = (mbl3, mbl2, mbl1)
     MeshSize = (nx3, nx2, nx1)
 
-    if filename.split(".")[-1] == "bin":
-        ICs = gen_bin(fields, filename)
-    elif filename.split(".")[-1] == "bp":
-        ICs = gen_adios(MeshSize, MeshBlockSize, fields, filename)
 
+    if filename.split(".")[-1] == "bin":
+        ICs = gen_bin(fields_ICs, filename)
+    elif filename.split(".")[-1] == "bp":
+        ICs = gen_adios(MeshSize, MeshBlockSize, fields_ICs, filename, localDir=localDir)
+
+    # Generate boundary condition files
+    bc_inner_filename = filename.replace("ICs", "bc_x2_inner")
+    bc_outer_filename = filename.replace("ICs", "bc_x2_outer")
+    print(f"Generating BCs: {bc_inner_filename}, {bc_outer_filename}")
+
+    BCs_inner = gen_adios_boundary(MeshSize, MeshBlockSize, fields_2d_inner, nghosts, bc_inner_filename, boundary_face='x2_inner', localDir=localDir)
+    BCs_outer = gen_adios_boundary(MeshSize, MeshBlockSize, fields_2d_outer, nghosts, bc_outer_filename, boundary_face='x2_outer', localDir=localDir)
         
     print(f"ICs shape: {ICs.shape}")
     try:
@@ -150,6 +97,7 @@ def generate_ICs(filename_input, filename='ICs.bp'):
     except Exception as e:
         print(f"Error during plotting: {e}. Maybe you have selected the wrong data type for ICs?")
 
+
     return ICs
 
 
@@ -157,7 +105,7 @@ def generate_ICs(filename_input, filename='ICs.bp'):
 # ICs set-up
 # -----------------------------
 
-def isothermal_strat(nx, ny, nz, rho0, a, H_s, x_range, y_range, z_range):
+def isothermal_strat(nx, ny, nz, rho0, a, H, x_range, y_range, z_range):
 
     # Create the 3D grid
     x = np.linspace(x_range[0], x_range[1], nx)
@@ -166,12 +114,45 @@ def isothermal_strat(nx, ny, nz, rho0, a, H_s, x_range, y_range, z_range):
 
     X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
     # Compute the density
-    rho = rho0 * (1.0 / np.cosh(Y / H_s))**2
+    rho = rho0 * np.exp(-a * (np.sqrt(1 + (Y / (a * H))**2) - 1))
 
     return rho
+def gen_rho_strat(filename_input):
+    params = load_params(filename_input)
+    stratified_box = StratifiedBox(filename_input, os.path.abspath(os.path.join(filename_input, '..')))
+    nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
+    nghosts = int(params['reader'].get('parthenon/mesh', 'nghost'))
+
+    #nx1 += 2 * nghosts
+    nx2 += 2 * nghosts
+    #nx3 += 2 * nghosts
+
+    mbl1, mbl2, mbl3 = (int(params['reader'].get('parthenon/meshblock', f'nx{i}')) for i in range(1,4))
+    mbar_over_kb = stratified_box.mbar/ut.constants.kb 
+    code_length_cgs = float(params['reader'].get('units', 'code_length_cgs'))
+    code_mass_cgs = float(params['reader'].get('units', 'code_mass_cgs'))
+
+    dx = (params['x1max'] - params['x1min']) / (nx1) * code_length_cgs
+    dy = (params['x2max'] - params['x2min']) / (nx2) * code_length_cgs
+    dz = (params['x3max'] - params['x3min']) / (nx3)  * code_length_cgs
+
+    g0 = 2 * np.pi * ut.constants.G * params['surface_density'] * code_mass_cgs / (code_length_cgs)**2
+    c_s = np.sqrt(params['T_base'] / mbar_over_kb)
+    H = c_s**2/ g0
+    rho_0 = (params['surface_density'] * code_mass_cgs / code_length_cgs**2
+    ) / (2 * H)
+    print(f"c_s = {c_s/1e5:.3e} km/s")
+    print(f"Using rho_0 = {rho_0:.3e} g/cm^3, H = {H/code_length_cgs:.3e} code units, g0 = {g0:.3e} cm/s^2")
 
 
-def insert_sphere(density, energy,
+    full_box_rho = isothermal_strat(nx1, nx2, nx3, rho_0, params['a_over_H'], H,
+                    (params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
+                    (params['x2min'] * code_length_cgs - nghosts * dy, params['x2max'] * code_length_cgs + nghosts * dy),
+                    (params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs)
+                    )
+    return full_box_rho, nghosts
+
+def insert_sphere(density, mom, energy,
                   r,
                   T_cloud,
                   mbar_over_kb,
@@ -215,10 +196,11 @@ def insert_sphere(density, energy,
 
     rho_cloud = np.average(density[mask]) * T_base / T_cloud
     density[mask] = rho_cloud
+    mom[mask] = 0.0
     energy_value = (T_cloud / mbar_over_kb) * rho_cloud / (gamma - 1.0)
     energy[mask] = energy_value
 
-    return density, energy
+    return density, mom, energy
 
 
 
@@ -230,5 +212,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     localDir = os.getcwd()
-    filename_input = os.path.join(localDir, 'strat_simple.in')
-    generate_ICs(filename_input=filename_input, filename='ICs.bp')
+    filename_input = os.path.join(localDir, 'strat.in')
+    generate_ICs(filename_input=filename_input, filename='ICs.bp', localDir=localDir)
