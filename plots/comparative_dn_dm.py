@@ -151,30 +151,33 @@ def plot_subplots(run_list, outdir):
 
     plt.tight_layout()
     os.makedirs(outdir, exist_ok=True)
-    print(f'Saving figure to {os.path.join(outdir, "pdf_cdf_additionalcurves.png")}')
-    plt.savefig(os.path.join(outdir, "pdf_cdf_additionalcurves.png"), dpi=300, bbox_inches='tight')
+    print(f'Saving figure to {os.path.join(outdir, "pdf_cdf_additionalcurves.pdf")}')
+    plt.savefig(os.path.join(outdir, "pdf_cdf_additionalcurves.pdf"), dpi=300, bbox_inches='tight')
     plt.close()
 
 # Example usage
 
 
 if __name__ == "__main__":
+
     runs = [
-        '/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00000.phdf',
-        '/viper/ptmp/ferhi/fvLism/01kc/fv02/out/parthenon.prim.00000.phdf',
-        '/viper/ptmp/ferhi/fvLism/kc/fv01_shorter/out/parthenon.prim.00000.phdf',
-        '/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00090.phdf',
-        '/viper/ptmp/ferhi/fvLism/01kc/fv02/out/parthenon.prim.00024.phdf',
-        '/viper/ptmp/ferhi/fvLism/kc/fv01_shorter/out/parthenon.prim.00020.phdf', 
+    '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/out/parthenon.prim.00000.phdf',
+    '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv02/out/parthenon.prim.00000.phdf',
+    '/viper/ptmp/ferhi/LEGACY/fvLism/kc/fv01_shorter/out/parthenon.prim.00000.phdf',
+    '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/out/parthenon.prim.00090.phdf',
+    '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv02/out/parthenon.prim.00024.phdf',
+    '/viper/ptmp/ferhi/LEGACY/fvLism/kc/fv01_shorter/out/parthenon.prim.00020.phdf', 
 
-        '/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00172.phdf', 
-        '/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00070.phdf', 
-        '/viper/ptmp/ferhi/fvLism/01kc/fv02/out/parthenon.prim.00023.phdf',
-        '/viper/ptmp/ferhi/fvLism/01kc/fv02/out/parthenon.prim.00021.phdf',
-        #'/viper/ptmp/ferhi/fvLism/kc/fv01_shorter/out/parthenon.prim.00015.phdf', 
-        '/viper/ptmp/ferhi/fvLism/kc/fv01_shorter/out/parthenon.prim.00027.phdf', 
+    '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/out/parthenon.prim.00172.phdf', 
+    '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/out/parthenon.prim.00070.phdf', 
+    '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv02/out/parthenon.prim.00023.phdf',
+    '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv02/out/parthenon.prim.00021.phdf',
+    #'/viper/ptmp/ferhi/fvLism/kc/fv01_shorter/out/parthenon.prim.00015.phdf', 
+    '/viper/ptmp/ferhi/LEGACY/fvLism/kc/fv01_shorter/out/parthenon.prim.00027.phdf', 
 
-    ]
-    #runs = ['/viper/ptmp/ferhi/fvLism/kc/fv01_shorter/out/parthenon.prim.final.phdf']
+]
     plot_subplots(runs, '.')#'/u/ferhi/Figures/')
 # plot_subplots(["run1.h5", "run2.h5", "run3.h5", "run4.h5"], "output_directory")
+"""
+
+"""

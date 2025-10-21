@@ -100,16 +100,17 @@ boundary = 1 / X
 # Mask: above curve OR right of vertical line
 mask = (Y >= boundary) | (X >= 2)
 
-
+n_before = len(ax.collections)
 
 # Apply shading
-ax.contourf(X, Y, mask, levels=[0.5, 1], colors=['lightblue'], alpha=0.3)
+cf1 = ax.contourf(X, Y, mask, levels=[0.5, 1], colors=['lightblue'], alpha=0.3)
 
 # Fill region below y = x and right of x = 0.5
 mask_comp = (Y < boundary) & (X < 2)
-ax.contourf(X, Y, mask_comp.astype(int), levels=[0.5, 1], colors=['lightcoral'], alpha=0.3)
+cf2 = ax.contourf(X, Y, mask_comp.astype(int), levels=[0.5, 1], colors=['lightcoral'], alpha=0.3)
 
-
+for coll in ax.collections[n_before:]:
+    coll.set_rasterized(True)
 # Plot the boundary lines
 ax.plot(x, y, 'k--', alpha=0.5, label=r'$\propto r_{crit}$')
 ax.vlines(x=2, ymin=0.01, ymax=0.5, colors='k', linestyles='--', alpha=0.5)
@@ -140,7 +141,7 @@ plt.legend(handles, labels, handler_map={
     handles[-1]: HandlerMultiMarker(**combined_handles[1][1])
 }, loc='best')
 
-plt.savefig('/u/ferhi/Figures/fvLism_plot.png', dpi=300, bbox_inches='tight', transparent=False)
+plt.savefig('/u/ferhi/Figures/fvLism_plot.pdf', dpi=300, bbox_inches='tight', transparent=False)
 plt.show()
 
 

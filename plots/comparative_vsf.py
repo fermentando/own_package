@@ -6,6 +6,9 @@ import matplotlib.colors as mcolors
 from matplotlib.cm import ScalarMappable
 from adjust_ics import SingleCloudCC
 from adjust_ics import get_c_s
+import matplotlib as mpl
+import matplotlib.gridspec as gridspec
+
 
 cm1 = sns.light_palette("seagreen", as_cmap=True)
 cm2 = sns.color_palette("light:b", as_cmap=True)
@@ -18,11 +21,21 @@ sm3 = ScalarMappable(cmap=cm3, norm=norm)
 
 sm = [sm1, sm2, sm3]
 
+legends = [
+    r'$(1, 10^{-1}, 30)$', 
+    r'$(1, 10^{-2}, 300)$', 
+    r'$(0.1, 10^{-1}, 300)$', 
+]
+
 def plot_vsf_subplots(npz_paths, outdir, stand_l=1.0, min_pairs=10):
     
     
     plt.style.use('custom_plot')
-    fig, axs = plt.subplots(1, 3, figsize=(12, 4), sharey=True)
+    fig = plt.figure(figsize=(14, 4))
+    gs = gridspec.GridSpec(1, 4, width_ratios=[1, 1, 1, 0.05], wspace=0.2)
+
+    axs = [fig.add_subplot(gs[i]) for i in range(3)]  # subplots
+    cbar_ax = fig.add_subplot(gs[3])   
     
 
     for subplot_idx in range(3):
@@ -32,7 +45,7 @@ def plot_vsf_subplots(npz_paths, outdir, stand_l=1.0, min_pairs=10):
             print(run_idx)
             
             path = npz_paths[run_idx]
-            input_file_path = '/viper/ptmp/ferhi/' + path.split("3d_vsf_")[0].split("function")[-1]
+            input_file_path = '/viper/ptmp/ferhi/LEGACY/' + path.split("3d_vsf_")[0].split("function")[-1]
             sim = SingleCloudCC(os.path.join(input_file_path, 'ism.in'), dir=input_file_path)
             depth = float(sim.reader.get('problem/wtopenrun', 'depth'))
             l_turbulent =  depth 
@@ -53,10 +66,11 @@ def plot_vsf_subplots(npz_paths, outdir, stand_l=1.0, min_pairs=10):
             x_vals = 10 ** log_centers / stand_l * correction_centers
             lower_power = 10 ** np.floor(np.log10(min(x_vals)))
 
-            ax.plot(x_vals, np.sqrt(3/2)*vsf/cs, color = sm[subplot_idx].to_rgba(i+1))
+            if i ==4 :ax.plot(x_vals, np.sqrt(3/2)*vsf/cs, color = sm[subplot_idx].to_rgba(i+1), label = legends[subplot_idx])
+            else: ax.plot(x_vals, np.sqrt(3/2)*vsf/cs, color = sm[subplot_idx].to_rgba(i+1))
             ax.set_xlim(left = lower_power)
             if i == 0: ax.vlines(x = l_turbulent, ymin = 1e-2, ymax = 1e3, color='k', linestyle='--', linewidth=1, label=r'$L_\mathrm{ISM}$', alpha= 0.4)
-            if run_idx == 0: ax.legend(loc='upper left', fontsize = 12)
+            ax.legend(loc='upper left', fontsize = 12)
 
         # Reference slope line ~ l^{1/3}
         x_ref = x_vals[~np.isnan(vsf)]
@@ -96,11 +110,23 @@ def plot_vsf_subplots(npz_paths, outdir, stand_l=1.0, min_pairs=10):
         ax.tick_params(axis='x', labelsize=14)
         ax.set_ylim(bottom=1e-1, top=10)
 
-    plt.tight_layout()
+    ## Colormap
+    gray_cmap = mpl.colors.ListedColormap([str(0.2 + 0.15*j) for j in range(5)][::-1])  # 5 tones of gray
+    bounds = np.arange(1, 7)  # 1 to 5 labels
+    gray_norm = mpl.colors.BoundaryNorm(bounds, gray_cmap.N)
+    cbar = mpl.colorbar.ColorbarBase(
+        cbar_ax, cmap=gray_cmap, norm=gray_norm, orientation='vertical'
+    )
+    cbar.set_ticks(np.arange(1.5, 6))
+    cbar.set_ticklabels([f"{i:.2f}" for i in np.linspace(0.1,1,5)])
+    cbar.set_label(r'$ t / t_\mathrm{sh}$', rotation=0, labelpad=15, size = 16)
+
+
     os.makedirs(outdir, exist_ok=True)
-    outfile = os.path.join(outdir, "vsf_3x3_subplots.png")
+    outfile = os.path.join(outdir, "consistent_vsf_3x3_subplots.pdf")
     print(f"Saving to {outfile}")
-    plt.savefig(outfile, dpi=300)
+    axs[1].set_title(r'$(r_\mathrm{cl}/r_\mathrm{crit}, f_v, L_\mathrm{ISM}/r_\mathrm{cl})$', fontsize=16, y=1.02)
+    plt.savefig(outfile, dpi=300, bbox_inches='tight')
     plt.close()
 
 
@@ -112,11 +138,11 @@ if __name__ == "__main__":
 
     
     vsf_files = [
-        u1+"3d_vsf_011.npz", u1+"3d_vsf_012.npz", u1+"3d_vsf_013.npz", u1+"3d_vsf_014.npz", u1+"3d_vsf_022.npz",
-        u2+"3d_vsf_006.npz", u2+"3d_vsf_007.npz", u2+"3d_vsf_008.npz", u2+"3d_vsf_009.npz", u2+"3d_vsf_010.npz",   
-        u3+"3d_vsf_004.npz", u3+"3d_vsf_006.npz", u3+"3d_vsf_020.npz", u3+"3d_vsf_026.npz", u3+"3d_vsf_037.npz",
+        u1+"3d_vsf_006.npz", u1+"3d_vsf_008.npz", u1+"3d_vsf_012.npz", u1+"3d_vsf_014.npz", u1+"3d_vsf_020.npz",
+        u2+"3d_vsf_004.npz", u2+"3d_vsf_006.npz", u2+"3d_vsf_008.npz", u2+"3d_vsf_009.npz", u2+"3d_vsf_010.npz",   
+        u3+"3d_vsf_004.npz", u3+"3d_vsf_006.npz", u3+"3d_vsf_008.npz", u3+"3d_vsf_013.npz", u3+"3d_vsf_014.npz",
         
     ]
-    
+
         
     plot_vsf_subplots(np.sort(vsf_files), outdir='/u/ferhi/Figures/')

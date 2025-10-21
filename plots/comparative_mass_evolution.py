@@ -79,7 +79,7 @@ if __name__ == "__main__":
     plot_yt = False
     plot_hst = True
 
-    fig = plt.figure(figsize=(8, 9))
+    fig = plt.figure(figsize=(8, 10))
     gs = gridspec.GridSpec(2, 3, width_ratios=[1, 1, 0.08], wspace=0.1, hspace=0.1, figure=fig)
     ax = np.empty((2, 2), dtype=object)
     ax[0, 0] = fig.add_subplot(gs[0, 0])
@@ -94,12 +94,15 @@ if __name__ == "__main__":
     print(f"N_procs set to: {N_procs} processors.")
     gout = True
     
-    run_paths = ['/viper/ptmp/ferhi/fvLism/02kc','/viper/ptmp/ferhi/fvLism/01kc']
+    run_paths = ['/viper/ptmp/ferhi/LEGACY/fvLism/02kc','/viper/ptmp/ferhi/LEGACY/fvLism/01kc']
 
 
 
     for j, run in enumerate(run_paths):
         all_runs = glob.glob(os.path.join(run, 'fv*'))
+        if run == '/viper/ptmp/ferhi/LEGACY/fvLism/01kc':
+            print(run+"/fv01_longer")
+            all_runs.remove(run+"/fv01_longer")
         #if j == 1:
             #other_dirs = glob.glob('/viper/ptmp/ferhi/d40rcl/01kc/fv*')
             #all_runs.extend(other_dirs)
@@ -128,8 +131,11 @@ if __name__ == "__main__":
             t1 = sim.R_cloud / sim.v_wind
             t2 = 10 * fv * depth *  sim.R_cloud / sim.v_wind
 
+            if 'longer' in run_name: continue
+
             # Linear sum
-            t_linear = t1 + t2
+            print(f"This is run {run_name} with R_cloud = {sim.R_cloud / 1e19} r_crit")
+            t_linear = t1
 
             try:
                 timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run_name, gout)
@@ -162,7 +168,7 @@ if __name__ == "__main__":
             #ax[0, j].plot(time_axis[idx]/t_linear, norm_mass[idx], marker='o', color='black', zorder=10, alpha = 0.8)  
             #ax[1, j].plot(time_axis2[idx2]/t_linear, v_normalised[idx2], marker='o', color='black', zorder=10, alpha = 0.8)
             
-            ax[0,1].set_xlim(left = 0, right = 30)
+            ax[0,1].set_xlim(left = 0, right = 100)
 
  
 
@@ -172,12 +178,12 @@ fv_legend_elements = [
     Line2D([0], [0], color='black', linestyle=':', label=r'$f_v = 10^{\mathrm{-2}}$'),
     Line2D([0], [0], color='black', linestyle='--', label=r'$f_v = 10^{\mathrm{-3}}$'),
 ]
-fig.subplots_adjust(top=0.93)  
+fig.subplots_adjust(top=0.9)  
 fig.legend(
     handles=fv_legend_elements,
     loc='upper center',
     ncol=3,
-    bbox_to_anchor=(0.5, 1.01),  # Slightly above the plot
+    bbox_to_anchor=(0.5, 1.0005),  # Slightly above the plot
     frameon=True,
 )
 
@@ -191,15 +197,19 @@ ax[0, 0].set_ylabel(r'$\log\left(m(T < 2T_\mathrm{cl}) / m_0\right)$', labelpad=
 ax[1, 0].set_ylabel(r'$\Delta v_\mathrm{shear} / v_w$', labelpad = 8)
 for axs in [ax[1, 0], ax[1, 1]]:
     axs.set_xlabel(r'$\tau$')
-    
+
 
 for axs in [ax[0, 0], ax[0, 1]]:
     axs.set_ylim(-3, 1)
-
+ax[0,0].set_title(r'$r_\mathrm{cl} = 10\,r_\mathrm{crit}$', size = 18, pad = 10)
+ax[0,1].set_title(r'$r_\mathrm{cl} = \,r_\mathrm{crit}$', size = 18, pad = 10)
 plt.setp(ax[0,1].get_yticklabels(), visible=False)
 plt.setp(ax[1,1].get_yticklabels(), visible=False)
 plt.setp(ax[0,0].get_xticklabels(), visible=False)
 plt.setp(ax[0,1].get_xticklabels(), visible=False)
 
-plt.savefig('/u/ferhi/Figures/comparative_masscc_evolution.png', dpi = 300, bbox_inches = 'tight')
+
+
+print('Saved to: ', '/u/ferhi/Figures/comparative_mass_evolution.pdf')
+plt.savefig('/u/ferhi/Figures/comparative_mass_evolution.pdf', dpi = 300, rasterized=True)
 plt.show()

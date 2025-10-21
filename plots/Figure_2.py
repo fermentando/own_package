@@ -42,9 +42,9 @@ custom_cmap = LinearSegmentedColormap.from_list('yellow_white_purple', colors)
 Hist = False
 Proj = True
 # Define parameters
-baseDir = '/viper/ptmp/ferhi/fvLism/'
+baseDir = '/viper/ptmp/ferhi/LEGACY/fvLism/'
 savename ='changingr_muti_volweighted'
-vol = ['01kc/fv01_30r', '02kc/fv01_longer',  'kc/fv01_shorter']#, 'kc/fv01_shorter']  # Only one row for now
+vol = ['01kc/fv01_30r']#, '02kc/fv01_longer',  'kc/fv01_shorter']#, 'kc/fv01_shorter']  # Only one row for now
 snps = [5, 80, 170]
 
 
@@ -68,7 +68,7 @@ if Proj:
 
     norm_plot = mcolors.LogNorm(vmin=vmin, vmax=vmax)
 
-    for i, v_i in zip([1,0,2],vol):
+    for i, v_i in zip([0,1,2],vol):
         if i == 1:
             snps = [5, 60, 170]
         #if i == 2:
@@ -99,39 +99,21 @@ if Proj:
                     rho = rho[:, 0:ref_shape, :]
                 
             plt.style.use('custom_plot')
-            
+
+
+            ax = axes[i,j]
+            pos = ax.get_position()
+
+            # Remove the default axis (we’ll replace it with two halves)
+            #ax.remove()
+            rho_top = rho[np.shape(rho)[0]//2:,:,:]
+            rho_bottom = rho[:np.shape(rho)[0]//2,:,:]
+            rho_top = rho
+            rho_bottom = rho
             plot_dict = plot_projection(rho, view_dir=2, cmap=cmap, weight_data=None, new_fig=False, cbar_flag = False, fig = fig, ax=axes[i, j], kwargs={'norm': norm_plot})
-            view_dir = 2
-            L = np.shape(rho)
-            dim = len(L)
+            
+            
 
-            x_dir = (view_dir + 1) % dim
-            y_dir = (view_dir + 2) % dim
-            z_dir = view_dir
-
-
-            x_data = np.linspace(0, L[x_dir]/240, num=L[x_dir] + 1)
-            y_data = np.linspace(0, L[y_dir]/240, num=L[y_dir] + 1)
-            z_data = np.linspace(0, L[z_dir]/240, num=L[z_dir] + 1)
-            weight_data = np.ones_like(rho)
-                        
-            contour_levels = [ 1e-25, 7e-25]
-            weight_data = np.ones_like(rho)       
-            rho_proj = np.sum(rho * weight_data, axis=2) / np.sum(weight_data, axis=2)
-            x_centers = 0.5 * (x_data[:-1] + x_data[1:])
-            y_centers = 0.5 * (y_data[:-1] + y_data[1:])
-            X, Y = np.meshgrid(y_centers, x_centers) 
-            contour = axes[i,j].contour(
-                X, Y,
-                rho_proj,  # transpose to match (ny, nx)
-                levels=contour_levels,
-                colors='black',
-                norm=LogNorm(),
-                linewidths=0.7,
-                alpha=0.4
-            )
-            axes[i, j].set_xticks([])
-            axes[i, j].set_yticks([])
             
 
             if snp == snps[-1]:
@@ -209,3 +191,36 @@ if Hist:
     # Final adjustments
     plt.tight_layout()
     plt.show()
+
+    """             plot_dict = plot_projection(rho, view_dir=2, cmap=cmap, weight_data=None, new_fig=False, cbar_flag = False, fig = fig, ax=axes[i, j], kwargs={'norm': norm_plot})
+            view_dir = 2
+            L = np.shape(rho)
+            dim = len(L)
+
+            x_dir = (view_dir + 1) % dim
+            y_dir = (view_dir + 2) % dim
+            z_dir = view_dir
+
+
+            x_data = np.linspace(0, L[x_dir]/240, num=L[x_dir] + 1)
+            y_data = np.linspace(0, L[y_dir]/240, num=L[y_dir] + 1)
+            z_data = np.linspace(0, L[z_dir]/240, num=L[z_dir] + 1)
+            weight_data = np.ones_like(rho)
+                        
+            contour_levels = [ 1e-25, 7e-25]
+            weight_data = np.ones_like(rho)       
+            rho_proj = np.sum(rho * weight_data, axis=2) / np.sum(weight_data, axis=2)
+            x_centers = 0.5 * (x_data[:-1] + x_data[1:])
+            y_centers = 0.5 * (y_data[:-1] + y_data[1:])
+            X, Y = np.meshgrid(y_centers, x_centers) 
+            contour = axes[i,j].contour(
+                X, Y,
+                rho_proj,  # transpose to match (ny, nx)
+                levels=contour_levels,
+                colors='black',
+                norm=LogNorm(),
+                linewidths=0.7,
+                alpha=0.4
+            )
+            axes[i, j].set_xticks([])
+            axes[i, j].set_yticks([]) """

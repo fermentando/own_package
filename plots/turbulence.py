@@ -123,7 +123,7 @@ if __name__ == "__main__":
 
     plot_yt = True
     plot_hst = False
-    mode = 'hot'  # or 'hot'
+    mode = 'cold'  # or 'hot'
     
     user_args = get_user_args(sys.argv)
     

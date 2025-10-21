@@ -14,7 +14,7 @@ from adjust_ics import SingleCloudCC
 
 
 
-filepath = '/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/'
+filepath = '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/'
 snapshot = 30
 colours = ["#d62728", "#1f77b4"]
 
@@ -32,9 +32,10 @@ gs = gridspec.GridSpec(nrows=4, ncols=1, height_ratios=[1.5,2,2,0.4], hspace=0.1
 ax_profile = fig.add_subplot(gs[0])
 ax_main_cold = fig.add_subplot(gs[1], sharex=ax_profile)
 ax_main_hot = fig.add_subplot(gs[2], sharex=ax_profile)
+labels = [ r'$T > 10^{5} K$', r'$T \leq 10^{5} K$']
 for j, mode in enumerate(['hot', 'cold']):
     ycords, v_normalised = hdf_turb_vs_y(filepath, mode=mode, snapshot_index=snapshot)
-    ax_profile.plot(ycords/240, v_normalised/14e5, color = colours[j], label=mode)
+    ax_profile.plot(ycords/240, v_normalised/14e5, color = colours[j], label=labels[j])
 
 ax_profile.set_ylabel(r'$ v_{turb} / c_{\mathrm{s, cold}}$', labelpad = 20)
 ax_profile.set_ylim(0,3)
@@ -87,10 +88,10 @@ plot_dict_cold = plot_projection(
     cbar_flag=False,
     fig=fig,
     ax=ax_main_cold,
-    kwargs={'norm': norm_blue}
+    kwargs={'norm': norm_blue, 'rasterized':True}
 )
 
-ax_main_cold.set_ylabel(r'$y / L_{\mathrm{ISM}}$')
+ax_main_cold.set_ylabel(r'$x / L_{\mathrm{ISM}}$')
 #ax_main_cold.set_yticklabels([])
 ax_main_cold.grid(False)
 
@@ -125,7 +126,7 @@ plot_dict_hot = plot_projection(
     cbar_flag=False,
     fig=fig,
     ax=ax_main_hot,
-    kwargs={'norm': norm_red}
+    kwargs={'norm': norm_red, 'rasterized':True}
 
 )
 
@@ -142,8 +143,8 @@ ax_main_hot.tick_params(axis='x', which='both', labelbottom=True, bottom=True)
 ax_main_hot.xaxis.set_visible(True)
 ax_main_hot.xaxis.set_tick_params(labelbottom=True)
 
-ax_main_hot.set_xlabel(r'$x / L_{\mathrm{ISM}}$')
-ax_main_hot.set_ylabel(r'$y / L_{\mathrm{ISM}}$')
+ax_main_hot.set_xlabel(r'$y / L_{\mathrm{ISM}}$')
+ax_main_hot.set_ylabel(r'$x / L_{\mathrm{ISM}}$')
 ax_main_hot.tick_params(axis='x', labelbottom=True) 
 ax_main_hot.grid(False)
 
@@ -161,7 +162,7 @@ cb2 = fig.colorbar(plot_dict_hot['slc'], cax=cax2, orientation='horizontal')
 cb1.set_label(r'$ v_\mathrm{turb, cold} / c_{\mathrm{s, cold}}$')
 cb2.set_label(r'$ v_\mathrm{turb, hot} / c_{\mathrm{s, cold}}$')
     
-plt.savefig('example_section.png', dpi=300, bbox_inches='tight', transparent=False)
+plt.savefig('example_section.pdf', dpi=300, bbox_inches='tight', transparent=False)
 plt.show()
 
 """

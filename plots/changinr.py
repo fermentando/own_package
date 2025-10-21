@@ -34,13 +34,13 @@ custom_cmap = LinearSegmentedColormap.from_list('yellow_white_purple', colors)
 Hist = False
 Proj = True
 # Define parameters
-baseDir = '/viper/ptmp/ferhi/fvLism/'
+baseDir = '/viper/ptmp/ferhi/LEGACY/fvLism/'
 savename ='changingr_muti_volweighted'
-vol = ['01kc/fv01_longer', '02kc/fv01_longer',  'kc/fv01_shorter']#, 'kc/fv01_shorter']  # Only one row for now
+vol = [ '02kc/fv01_longer', '01kc/fv01_longer', 'kc/fv01_shorter']#, 'kc/fv01_shorter']  # Only one row for now
 snps = [5, 80, 170]
 
 #Reference rho shape
-read = rd.read_hdf5('/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00000.phdf', fields=['rho', 'T'], n_jobs = 4)
+read = rd.read_hdf5('/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/out/parthenon.prim.00000.phdf', fields=['rho', 'T'], n_jobs = 4)
 ref_shape = read['rho'].shape[1]
 print(ref_shape)
 
@@ -63,15 +63,15 @@ if Proj:
 
     norm_plot = mcolors.LogNorm(vmin=vmin, vmax=vmax)
 
-    for i, v_i in zip([1,0,2],vol):
-        if i == 1:
-            snps = [1,86,190]
+    for i, v_i in enumerate(vol):
+        if i == 0:
+            snps = [1,60,126]
             #snps = [5, 60, 170]
         #if i == 2:
         if i == 2:
             snps = [1, 20, 39]
-        else:
-            snps = [1,30,60]
+        if i == 1:
+            snps = [10,98,192]
         for j, snp in enumerate(snps):
             try:
                 snapshot = glob.glob(os.path.join(baseDir+v_i+'/out', 'parthenon.prim.'+str(snp).zfill(5)+'.phdf'))[0]
@@ -87,38 +87,55 @@ if Proj:
             try:
                     
                 ymin = detect_cold_box(read['T'])
-                rho = rho[:, ymin:ymin + ref_shape, :]
+                rho = rho[:, ymin:ymin + 768, :]
             except ValueError as e:
                 print(f"Error in snapshot {snp} of volume {v_i}: {e}.\n Defaulting to box dims.")
                 rho = rho[:, 0:ref_shape, :]
             
             plt.style.use('custom_plot')
             
-            plot_dict = plot_projection(rho, view_dir=2, cmap=cmap, weight_data=None, new_fig=False, cbar_flag = False, fig = fig, ax=axes[i, j], kwargs={'norm': norm_plot})
-            view_dir = 2
-            L = np.shape(rho)
-            dim = len(L)
+            #plot_dict = plot_projection(rho, view_dir=2, cmap=cmap, weight_data=None, new_fig=False, cbar_flag = False, fig = fig, ax=axes[i, j], kwargs={'norm': norm_plot})
+            ax = axes[i,j]
+            pos = ax.get_position()
 
-            x_dir = (view_dir + 1) % dim
-            y_dir = (view_dir + 2) % dim
-            z_dir = view_dir
+            # Remove the default axis (we’ll replace it with two halves)
+            #ax.remove()
+            N, M, K = rho.shape
+            rho_top = rho[N//2:, :, 128*K//256:136*K//256]
+            rho_bottom = rho[:N//2,:]
+            #plot_dict = plot_projection(rho, view_dir=2, cmap=cmap, weight_data=None, new_fig=False, cbar_flag = False, fig = fig, ax=axes[i, j], kwargs={'norm': norm_plot})
+            # Create top half axis
+            ax_top = fig.add_axes([pos.x0, pos.y0 + pos.height/2, pos.width, pos.height/2])
+            plot_projection(
+                rho_top, view_dir=2, cmap=cmap, weight_data=None,
+                new_fig=False, cbar_flag=False, fig=fig, ax=ax_top,
+                kwargs={'norm': norm_plot, 'rasterized':True}
+            )
+            ax_top.set_xticks([]); ax_top.set_yticks([])
 
+            # Create bottom half axis
+            ax_bottom = fig.add_axes([pos.x0, pos.y0, pos.width, pos.height/2])
+            plot_dict = plot_projection(
+                rho_bottom, view_dir=2, cmap=cmap, weight_data=None,
+                new_fig=False, cbar_flag=False, fig=fig, ax=ax_bottom,
+                kwargs={'norm': norm_plot, 'rasterized':True}
+            )
+            ax_bottom.set_xticks([]); ax_bottom.set_yticks([])
 
-            x_data = np.linspace(0, L[x_dir]/240, num=L[x_dir] + 1)
-            y_data = np.linspace(0, L[y_dir]/240, num=L[y_dir] + 1)
-            z_data = np.linspace(0, L[z_dir]/240, num=L[z_dir] + 1)
-            weight_data = np.ones_like(rho)
-                        
-            contour_levels = [1e-26, 1e-25, 7e-25, 9e-25, 1e-24]
-            weight_data = np.ones_like(rho)       
-            rho_proj = np.sum(rho * weight_data, axis=2) / np.sum(weight_data, axis=2)
-            x_centers = 0.5 * (x_data[:-1] + x_data[1:])
-            y_centers = 0.5 * (y_data[:-1] + y_data[1:])
-            X, Y = np.meshgrid(y_centers, x_centers) 
-            #contour = axes[i,j].contour(
-            #    X, Y,
-            #    rho_proj,  # transpose to match (ny, nx)
-            #)
+            y_mid = pos.y0 + pos.height/2  
+
+            # Add dashed white line across full width of panel
+            ax_top.spines['bottom'].set_visible(False)
+            ax_bottom.spines['top'].set_visible(False)
+            fig.add_artist(plt.Line2D(
+                [pos.x0, pos.x0 + pos.width],  # x start and end (in figure coords)
+                [y_mid, y_mid],                # y start and end (same -> horizontal line)
+                transform=fig.transFigure,     # interpret coords in figure space
+                color="white",
+                linestyle="--",
+                linewidth=1.5,
+                zorder=10
+            ))
             axes[i, j].set_xticks([])
             axes[i, j].set_yticks([])
             
@@ -131,7 +148,7 @@ if Proj:
                 
         
     rs = [0.1,1,10]
-    ts = [1,10,20]
+    ts = [0, 0.5, 1]
     for i in range(len(vol)):
         plt.style.use('custom_plot')
         axes[i, 0].set_ylabel(rf'$r_{{\mathrm{{cl}}}}/r_{{\mathrm{{crit}}}} = {rs[i]}$', fontsize = 16, labelpad = 8)
@@ -140,7 +157,7 @@ if Proj:
         
     for i in range(len(snps)):  
         axes[0, i].xaxis.set_label_position('top') 
-        axes[0, i].set_xlabel(rf'$\tau \sim {ts[i]}$', fontsize = 16, labelpad = 8)
+        axes[0, i].set_xlabel(rf'$t_\mathrm{{ent}} \sim {ts[i]}$', fontsize = 16, labelpad = 8)
             
     
 
@@ -152,8 +169,17 @@ if Proj:
     #    spine.set_visible(False)
     #cbar_ax.tick_params(axis='y', which='both', color = 'white', direction='in')
     #cbar_ax.set_ylabel(r'$\chi$')
+    pos = axes[0,1].get_position()
+    x_center = pos.x0 + pos.width / 2
+
+    plt.suptitle(
+        r'$(f_v, L_{\rm ISM}) = \mathrm{const.}$',
+        fontsize=16,
+        x=x_center, 
+        
+)
     print(f'Saving figure to /u/ferhi/Figures/{savename}.png')
-    plt.savefig(f'/u/ferhi/Figures/{savename}.png',bbox_inches='tight', dpi=300)
+    plt.savefig(f'/u/ferhi/Figures/{savename}.pdf',bbox_inches='tight', dpi=300, rasterized=True)
     plt.show()
     plt.clf()
 

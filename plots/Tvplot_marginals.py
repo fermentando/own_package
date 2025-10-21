@@ -81,7 +81,7 @@ def T_v_phase_multi(run_list, vol, mass_cloud, v_wind, v_correction_list=None, o
         # ---------------------------
         h = axes[1, i].hist2d(vy_log, T_log, bins=[vy_bins, T_bins],
                               weights=rho_log * vol / mass_cloud,
-                              cmap=cm, norm=LogNorm(vmin=1e1, vmax=1e5))
+                              cmap=cm, norm=LogNorm(vmin=1e1, vmax=1e5), rasterized=True)
 
         axes[1, i].set_xscale('log')
         axes[1, i].set_yscale('log')
@@ -149,22 +149,25 @@ def T_v_phase_multi(run_list, vol, mass_cloud, v_wind, v_correction_list=None, o
 
     # Shared y-label for bottom row
     axes[1, 0].set_ylabel('T [K]')
+    axes[0, 0].set_title(r'$t \sim  0.1\,t_\mathrm{ent}$', size=18, pad=10)
+    axes[0, 1].set_title(r'$t \sim  0.5\,t_\mathrm{ent}$', size=18, pad=10)
+    axes[0, 2].set_title(r'$t \sim  \,t_\mathrm{ent}$', size=18, pad=10)
 
     # Add colorbar to the right of all subplots
     cbar_ax = fig.add_axes([0.92, 0.20, 0.02, 0.7])  # [left, bottom, width, height]
     fig.colorbar(h[3], cax=cbar_ax, label=r'$m_\mathrm{tot} / m_\mathrm{cl}$')
 
     fig.tight_layout(rect=[0, 0, 0.92, 1])  # leave space on right for colorbar
-    save_path = f'/u/ferhi/Figures/T_v_plots/T_v_phase_marginals.png'
+    save_path = f'/u/ferhi/Figures/T_v_plots/T_v_phase_marginals.pdf'
     #save_path = 'marginals.png'
     print("File saved in : ", save_path)
-    plt.savefig(save_path, dpi=300)
+    plt.savefig(save_path, bbox_inches = 'tight', dpi=300)
     plt.close(fig)
 
 if __name__ == '__main__':
 
     RUNS = [os.getcwd()]
-    run_paths = ["/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/"]
+    run_paths = ["/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/"]
     parts = run_paths[0].split('/')
     saveFile = run_paths[0].split('ferhi/')[-1]
 
@@ -188,9 +191,9 @@ if __name__ == '__main__':
     m_cloud = 4 * np.pi / 3 * (0.1*sim.R_cloud)**3 * rho_cloud_cgs
     
     run_list_multiplot = [
-        "/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00001.phdf", 
-        "/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00050.phdf",
-        "/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/out/parthenon.prim.00100.phdf", 
+        "/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/out/parthenon.prim.00001.phdf", 
+        "/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/out/parthenon.prim.00050.phdf",
+        "/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/out/parthenon.prim.00100.phdf", 
     ]
     
     v_correction_list_multiplot =  np.asarray([1,18,100])

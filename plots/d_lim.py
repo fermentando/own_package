@@ -107,15 +107,15 @@ if __name__ == "__main__":
     gout = True
     
     run_paths = [
-        '/viper/ptmp/ferhi/fvLism/0.1d_crit/10chi',
-        '/viper/ptmp/ferhi/fvLism/0.1d_crit/20chi',
-        '/viper/ptmp/ferhi/fvLism/0.1d_crit/30chi',
-        '/viper/ptmp/ferhi/fvLism/0.1d_crit/40chi',
-        '/viper/ptmp/ferhi/fvLism/0.1d_crit/50chi',
-        '/viper/ptmp/ferhi/fvLism/0.1d_crit/half40chi',
-        '/viper/ptmp/ferhi/fvLism/0.1d_crit/half50chi',
-        '/viper/ptmp/ferhi/fvLism/0.1d_crit/half60chi',
-        '/viper/ptmp/ferhi/fvLism/0.1d_crit/half_single_cloud',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/0.1d_crit/10chi',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/0.1d_crit/20chi',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/0.1d_crit/30chi',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/0.1d_crit/40chi',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/0.1d_crit/50chi',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/0.1d_crit/half40chi',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/0.1d_crit/half50chi',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/0.1d_crit/half60chi',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/0.1d_crit/half_single_cloud',
                  
                  ]
 
@@ -191,5 +191,5 @@ ax[0,0].set_ylim(-3, 1)
 ax[0,1].set_ylim(bottom = 0.)
 
 
-plt.savefig('/u/ferhi/Figures/d_lim.png', dpi = 300, bbox_inches = 'tight')
+plt.savefig('/u/ferhi/Figures/d_lim.pdf', dpi = 300, bbox_inches = 'tight')
 plt.show()

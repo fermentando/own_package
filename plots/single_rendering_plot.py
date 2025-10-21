@@ -37,7 +37,7 @@ def detect_cold_box(temp, threshold=1e4, padding=5):
 
 # File paths
 file_paths = [
-    '/viper/ptmp2/ferhi/d3rcrit/10kc/fv01/out/parthenon.prim.00006.phdf',
+    '/viper/ptmp2/ferhi/LEGACY/d3rcrit/10kc/fv01/out/parthenon.prim.00006.phdf',
     #'/viper/ptmp2/ferhi/d3rcrit/kc/fv01_v2/out/parthenon.prim.00000.phdf',
     #'/viper/ptmp2/ferhi/d3rcrit/01kc/fv01/out/parthenon.prim.00000.phdf'
 ]
@@ -78,4 +78,4 @@ from PIL import Image
 
 img = Image.open("long_box.png")
 img = img.crop(img.getbbox())  # Automatically trims transparent edges
-img.save("long_box.png")
+img.save("long_box.pdf", "PDF", quality=100)

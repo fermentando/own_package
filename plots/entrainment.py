@@ -30,9 +30,9 @@ def hst_entrainment(run, vwind, threshold=0.2):
         restart_fix = 0
         diffs = np.diff(delta_v)
         jumps = np.where(np.abs(diffs) > threshold)[0]
-        for j in jumps:
-            restart_fix += delta_v[j] - delta_v[j+1]
-            delta_v[j+1:] += restart_fix
+        #for j in jumps:
+        #    restart_fix += delta_v[j] - delta_v[j+1]
+        #    delta_v[j+1:] += restart_fix
         timeseries = data[:, 0]
         
         return timeseries, delta_v

@@ -25,15 +25,6 @@ colors = [
     (1.0, 0.8, 0.2)      # bright yellow
 ]
 
-#colors = [
-#    (0.0, 0.0, 0.0),    # black
-#    (0.0, 0.2, 0.1),    # dark green/teal
-#    (0.2, 0.5, 0.1),    # greenish
-#    (0.8, 0.7, 0.3),    # yellowish
-#    (1.0, 0.95, 0.6),   # bright yellow/white
-#]
-
-
 cmap = LinearSegmentedColormap.from_list('purple_to_yellow', colors)
 
 #Create colormap first
@@ -44,11 +35,14 @@ Hist = False
 Proj = True
 # Define parameters
 baseDir = '/viper/ptmp/ferhi/LEGACY/fvLism/'
-savename ='changingL_muti_volweighted'
-vol = ['01kc/fv01_movie_2','01kc/fv01_30r']  # Only one row for now
-snps = [1, 60, 170]
+savename ='trying'
+vol = [ '02kc/fv01_longer', '01kc/fv01_longer', 'kc/fv01_shorter']#, 'kc/fv01_shorter']  # Only one row for now
+snps = [5, 80, 170]
 
-
+#Reference rho shape
+read = rd.read_hdf5('/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/out/parthenon.prim.00000.phdf', fields=['rho', 'T'], n_jobs = 4)
+ref_shape = read['rho'].shape[1]
+print(ref_shape)
 
 vmin, vmax = 1, 1e2  # Color scale normalization
 im = None
@@ -69,13 +63,15 @@ if Proj:
 
     norm_plot = mcolors.LogNorm(vmin=vmin, vmax=vmax)
 
-    for i, v_i in zip([0,1],vol):
-        #if i == 1:
-        snps = [5, 60, 170]
+    for i, v_i in enumerate(vol):
+        if i == 0:
+            snps = [1,30,60]
+            #snps = [5, 60, 170]
         #if i == 2:
-        #    snps = [1, 10, 30]
-        #else:
-        #    snps = [1,10,30]
+        if i == 2:
+            snps = [1, 20, 39]
+        if i == 1:
+            snps = [10,98,192]
         for j, snp in enumerate(snps):
             try:
                 snapshot = glob.glob(os.path.join(baseDir+v_i+'/out', 'parthenon.prim.'+str(snp).zfill(5)+'.phdf'))[0]
@@ -87,35 +83,33 @@ if Proj:
             #Load data and make projection
             read = rd.read_hdf5(snapshot, fields=['rho', 'T'], n_jobs = 4)
             rho = read['rho']/1e-26
-            if i == 0:
-                ref_shape = rho.shape[1]
-            else:
-                try:
-                    
-                    ymin = detect_cold_box(read['T'])
-                    rho = rho[:, ymin:ymin + ref_shape, :]
-                except ValueError as e:
-                    print(f"Error in snapshot {snp} of volume {v_i}: {e}.\n Defaulting to box dims.")
-                    rho = rho[:, 0:ref_shape, :]
-                
-            plt.style.use('custom_plot')
 
+            try:
+                    
+                ymin = detect_cold_box(read['T'])
+                rho = rho[:, ymin:ymin + 768, :]
+            except ValueError as e:
+                print(f"Error in snapshot {snp} of volume {v_i}: {e}.\n Defaulting to box dims.")
+                rho = rho[:, 0:ref_shape, :]
+            
+            plt.style.use('custom_plot')
             
             #plot_dict = plot_projection(rho, view_dir=2, cmap=cmap, weight_data=None, new_fig=False, cbar_flag = False, fig = fig, ax=axes[i, j], kwargs={'norm': norm_plot})
             ax = axes[i,j]
             pos = ax.get_position()
 
             # Remove the default axis (we’ll replace it with two halves)
-            #ax.remove()
+            ax.remove()
             N, M, K = rho.shape
             rho_top = rho[N//2:, :, 128*K//256:136*K//256]
             rho_bottom = rho[:N//2,:]
+            #plot_dict = plot_projection(rho, view_dir=2, cmap=cmap, weight_data=None, new_fig=False, cbar_flag = False, fig = fig, ax=axes[i, j], kwargs={'norm': norm_plot})
             # Create top half axis
             ax_top = fig.add_axes([pos.x0, pos.y0 + pos.height/2, pos.width, pos.height/2])
             plot_projection(
                 rho_top, view_dir=2, cmap=cmap, weight_data=None,
                 new_fig=False, cbar_flag=False, fig=fig, ax=ax_top,
-                kwargs={'norm': norm_plot, 'rasterized':True}
+                kwargs={'norm': norm_plot}
             )
             ax_top.set_xticks([]); ax_top.set_yticks([])
 
@@ -124,7 +118,7 @@ if Proj:
             plot_dict = plot_projection(
                 rho_bottom, view_dir=2, cmap=cmap, weight_data=None,
                 new_fig=False, cbar_flag=False, fig=fig, ax=ax_bottom,
-                kwargs={'norm': norm_plot, 'rasterized':True}
+                kwargs={'norm': norm_plot}
             )
             ax_bottom.set_xticks([]); ax_bottom.set_yticks([])
 
@@ -142,8 +136,7 @@ if Proj:
                 linewidth=1.5,
                 zorder=10
             ))
-            axes[i, j].set_xticks([])
-            axes[i, j].set_yticks([])
+            
             
 
             if snp == snps[-1]:
@@ -153,38 +146,71 @@ if Proj:
 
                 
         
-    rs = [6,30]
-    ts = [0, 0.5, 1]
+    rs = [0.1,1,10]
+    ts = [1,10,20]
     for i in range(len(vol)):
         plt.style.use('custom_plot')
-        axes[i, 0].set_ylabel(rf'$L_{{\mathrm{{ISM}}}} = {rs[i]} r_{{\mathrm{{cl}}}}$', fontsize = 16, labelpad = 8)
+        axes[i, 0].set_ylabel(rf'$r_{{\mathrm{{cl}}}}/r_{{\mathrm{{crit}}}} = {rs[i]}$', fontsize = 16, labelpad = 8)
         #axes[i, 0].set_ylabel(rf'$f_v = 10^{{{rs[i]}}}$', fontsize=16, labelpad=8)
         axes[i, 0].yaxis.set_label_position("left")
         
     for i in range(len(snps)):  
         axes[0, i].xaxis.set_label_position('top') 
-        axes[0, i].set_xlabel(rf'$t_\mathrm{{ent}} \sim {ts[i]}$', fontsize = 16, labelpad = 8)
+        axes[0, i].set_xlabel(rf'$\tau \sim {ts[i]}$', fontsize = 16, labelpad = 8)
             
     
 
     # Colorbar setup (apply to all subplots)
-    #fig.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.15, top=0.9)  # leave space at bottom
-    cbar_ax = fig.add_axes([0.25, -0.02, 0.5, 0.06])  # [left, bottom, width, height] for horizontal bar
-    cbar = fig.colorbar(im, cax=cbar_ax, orientation='horizontal')
-    cbar_ax.tick_params(axis='x', which='both', color='white', direction='in', pad=10,    length=8,       # tick length
-    width=2)
-    cbar_ax.set_xlabel(r'$\chi$')
-    pos = axes[0,1].get_position()
-    x_center = pos.x0 + pos.width / 2
-
-    plt.suptitle(
-        r'$(r_{\rm cl}/r_{\rm crit}, f_v) = \mathrm{const.}$',
-        fontsize=16,
-        x=x_center, 
-        y=1.04, # Use y for vertical offset; padding is not a valid argument for suptitle
-    )
-    print(f'Saving figure to /u/ferhi/Figures/{savename}.pdf')
-    plt.savefig(f'/u/ferhi/Figures/{savename}.pdf', bbox_inches='tight', dpi=300)
+    #fig.subplots_adjust(hspace = 0.1, wspace = 0.1, right=0.8)
+    #cbar_ax = fig.add_axes([0.81, 0.15, 0.01, 0.7])  # Position of the colorbar
+    #fig.colorbar(im, cax=cbar_ax)
+    #for spine in cbar_ax.spines.values():
+    #    spine.set_visible(False)
+    #cbar_ax.tick_params(axis='y', which='both', color = 'white', direction='in')
+    #cbar_ax.set_ylabel(r'$\chi$')
+    print(f'Saving figure to /u/ferhi/Figures/{savename}.png')
+    plt.savefig(f'/u/ferhi/Figures/{savename}.png',bbox_inches='tight', dpi=300)
     plt.show()
     plt.clf()
 
+
+# -------- Hist -----------#
+if Hist:
+    fig, axes = plt.subplots(nrows=len(vol), ncols=len(snps), figsize=(15, 9), gridspec_kw={'wspace': 0.03, 'hspace': 0.03})
+    # Ensure `axes` is always a 2D array (fixes single-row case)
+    if len(vol) == 1:
+        axes = np.expand_dims(axes, axis=0)
+# Ensure `axes` is always a 2D array for consistency
+    for i, v_i in enumerate(vol):
+        for j, snp in enumerate(snps):
+            try:
+                snapshot = glob.glob(os.path.join(baseDir + v_i + '/out', 'parthenon.prim.' + str(snp).zfill(5) + '.phdf'))[0]
+            except (IndexError, FileNotFoundError):
+                # If file not found, make blank black subplot
+                axes[i, j].axis('off')
+                axes[i, j].set_facecolor('black')
+                continue
+            
+            print('Processing snapshot:', snapshot)
+            
+            # Load data
+            rho = rd.read_hdf5(snapshot, fields=['rho'])['rho'].flatten()
+
+            # Filter out non-physical values (optional)
+            rho = rho[rho > 0]
+
+            # Plot histogram
+            # Define logarithmic bins
+            log_bins = np.logspace(np.log10(vmin), np.log10(vmax), 50)
+            axes[i, j].hist(rho, bins=log_bins, color='purple', alpha=0.7, log=True,  histtype='stepfilled')
+            axes[i, j].set_xlim(vmin, vmax)
+            axes[i, j].set_xscale('log')
+            axes[i, j].set_yscale('log')
+            
+            # Remove ticks for a cleaner look
+            #axes[i, j].set_xticks([])
+            #axes[i, j].set_yticks([])
+
+    # Final adjustments
+    plt.tight_layout()
+    plt.show()

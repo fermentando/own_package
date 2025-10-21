@@ -7,9 +7,9 @@ from gen_strat import load_params, insert_sphere
 from adioslib import *
 import matplotlib
 
-def ICs_from_file(file):
+def ICs_from_file(file, filepath=None):
 
-    data = read_hdf5(file, ['rho', 'prs', 'vel2'])
+    data = read_hdf5(file, ['rho', 'prs', 'vel2'], filepath=filepath)
     full_rho = data['rho']
     full_prs = data['prs']  
     full_vel2 = data['vel2']
@@ -18,9 +18,9 @@ def ICs_from_file(file):
     return full_rho, full_prs, full_vel2
 
 
-def reICs_file(file, filename_input='strat.in', localDir='.', insert_sphere_radius = 0.0):
+def reICs_file(file, filename_input='restrat.in', localDir='.', insert_sphere_radius = 0.0):
     
-    full_rho, full_prs, full_vel2 = ICs_from_file(file)
+    full_rho, full_prs, full_vel2 = ICs_from_file(file, filepath=filename_input)
 
     params = load_params(filename_input)
     stratified_box = StratifiedBox(filename_input, os.path.abspath(os.path.join(filename_input, '..')))
@@ -63,5 +63,5 @@ if __name__ == "__main__":
     localDir = os.getcwd()
     filename_input = os.path.join(localDir, 'restrat.in')
 
-    reICs_file('/home/fernando/Runs/StratSimple/reference.phdf', filename_input, localDir)
+    reICs_file('/viper/ptmp/ferhi/StratDisk/InfallingClouds/reference.phdf', filename_input, localDir)
 

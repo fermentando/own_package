@@ -84,11 +84,11 @@ if __name__ == "__main__":
     plot_yt = False
     plot_hst = True
 
-    fig = plt.figure(figsize=(8, 6))
-    gs = gridspec.GridSpec(1, 3, width_ratios=[1, 0.14, 1], wspace=0.1, hspace=0.14, figure=fig)
+    fig = plt.figure(figsize=(6, 8))
+    gs = gridspec.GridSpec(2, 1, height_ratios=[1, 1], hspace= 0.05, figure=fig)
     ax = np.empty((2, 2), dtype=object)
     ax[0, 0] = fig.add_subplot(gs[0, 0])
-    ax[0, 1] = fig.add_subplot(gs[0, 2])
+    ax[0, 1] = fig.add_subplot(gs[1, 0])
 
 
 
@@ -98,12 +98,14 @@ if __name__ == "__main__":
     print(f"N_procs set to: {N_procs} processors.")
     gout = True
     
-    run_paths = ['/viper/ptmp/ferhi/fvLism/01kc/fv01_scaleless', '/viper/ptmp/ferhi/fvLism/01kc/fv01_scaleless_mach2', '/viper/ptmp/ferhi/fvLism/correct_M_overdense','/viper/ptmp/ferhi/fvLism/overdense/fv01_longer', '/viper/ptmp/ferhi/fvLism/01kc/scaleless_destruction']
+    run_paths = ['/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_scaleless', '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_scaleless_mach2', \
+                  '/viper/ptmp/ferhi/LEGACY/fvLism/correct_M_overdense','/viper/ptmp/ferhi/LEGACY/fvLism/overdense/fv01_longer', '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/scaleless_destruction']
     legends = [
-         #r'$\cancel{r_\mathrm{cl}}$',
-         r'$v_w=440 \, $kms$^{-1}$',
-         r'$\chi=10^3$',
-         r'$\chi=10^3, v_w=725 \, $kms$^{-1}$'
+         r'$(10^2, 1.5, 3)$',
+         r'$(10^2, 2, 3)$',
+         r'$(10^3, 0.4, 3)$',
+         r'$(10^3, 1.5, 3)$',
+         r'$(10^2, 1.5, 0.3)$',
     ]
 
 
@@ -119,16 +121,27 @@ if __name__ == "__main__":
         base_fv = int(-np.log10(fv))
         dt = float(sim.reader.get('parthenon/output1', 'dt'))
         dt2 = float(sim.reader.get('parthenon/output0', 'dt'))
+        rho_cloud_cgs = float(sim.reader.get('problem/wtopenrun', 'rho_cloud_cgs'))
+        rho_wind_cgs = float(sim.reader.get('problem/wtopenrun', 'rho_wind_cgs'))
+        kmin_raw = sim.reader.get('problem/wtopenrun', 'kmin')
+        try:
+            # Try to parse as tuple
+            if ',' in kmin_raw or '(' in kmin_raw or '[' in kmin_raw:
+                kmin = tuple(float(x) for x in kmin_raw.replace('(', '').replace(')', '').replace('[', '').replace(']', '').split(','))
+            else:
+                kmin_val = float(kmin_raw)
+                kmin = (kmin_val, kmin_val)
+        except Exception:
+            kmin_val = float(kmin_raw)
+            kmin = (kmin_val, kmin_val)
+        chi = rho_cloud_cgs / rho_wind_cgs
 
         
         
-        tsh =  depth * sim.R_cloud / sim.v_wind
-
-        t1 = sim.R_cloud / sim.v_wind
-        t2 = 10 * fv * depth *  sim.R_cloud / sim.v_wind
+        tsh =  depth * kmin[0]*sim.R_cloud / sim.v_wind * (chi * fv + 1)
 
         # Linear sum
-        t_linear = t1 + t2
+        t_linear = tsh #ß+ t2
 
         try:
             timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run_name, gout)
@@ -150,40 +163,45 @@ if __name__ == "__main__":
         idx = (np.abs(time_axis - tsh)).argmin()
         idx2 = (np.abs(time_axis2 - tsh)).argmin()
 
-        t_shift = 0.65 * tsh if j ==1 else 0
+        t_shift = 0.65 * depth * sim.R_cloud / sim.v_wind if j ==1 else 0
         correction_index_mass = (np.abs(time_axis - t_shift)).argmin()
         correction_index_v = (np.abs(time_axis2 - t_shift)).argmin()
+        label = legends[j] 
 
         if j == 0:
-            ax[0,0].plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], color = cmap(norm(j)), alpha=0.8)
-            ax[0,1].plot((times * code_time_cgs - t_shift)/ t_linear, v_normalised, color = cmap(norm(j)), alpha=0.8)
+            ax[0,0].plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], color = cmap(norm(j)), alpha=0.8,label = label)
+            ax[0,1].plot((times * code_time_cgs - t_shift)/ t_linear, v_normalised, color = cmap(norm(j)), alpha=0.8,label = label)
         elif j == len(run_paths)-1:
-            ax[0,0].plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], color = 'black', alpha=0.8)
-            ax[0,1].plot((times * code_time_cgs - t_shift)/ t_linear, v_normalised, color = 'black', alpha=0.8)
+            ax[0,0].plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], color = 'green', alpha=0.8,label = label)
+            ax[0,1].plot((times * code_time_cgs - t_shift)/ t_linear, v_normalised, color = 'green', alpha=0.8,label = label)
         else:
-            label = legends[j-1]
             print(j)
             ax[0,0].plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], label = label, color = cmap(norm(j)), alpha=0.8)
             ax[0,1].plot((times * code_time_cgs - t_shift)/ t_linear, v_normalised, label = label, color = cmap(norm(j)), alpha=0.8)
         #ax[0, j].plot(time_axis[idx]/t_linear, norm_mass[idx], marker='o', color='black', zorder=10, alpha = 0.8)  
         #ax[1, j].plot(time_axis2[idx2]/t_linear, v_normalised[idx2], marker='o', color='black', zorder=10, alpha = 0.8)
         
-        ax[0,1].set_xlim(left = 0, right = 30)
+        ax[0,1].set_xlim(left = 0, right = 4)
 
 
 
 
 # Axis labels
-ax[0, 0].legend(frameon=True, fontsize=10, loc='lower right', prop={'size': 9.5})
+# Make the two axes share the x-axis
+ax[0, 0].get_shared_x_axes().joined(ax[0, 0], ax[0, 1])
+
+ax[0, 0].legend(frameon=True, fontsize=10, loc='lower right', prop={'size': 12})
 ax[0, 0].set_ylabel(r'$\log\left(m(T < 2T_\mathrm{cl}) / m_0\right)$', labelpad=8, fontsize=16)
+ax[0, 0].set_xticklabels([])  # Hide x labels of top plot
 ax[0, 1].set_ylabel(r'$\Delta v_\mathrm{shear} / v_w$', labelpad = 8, fontsize=16)
+ax[0, 1].set_xlabel(r'$t_\mathrm{ent}$', fontsize=16)
+ax[0,0].set_title(r'$(\chi, \mathcal{M}_w, f_vL_\mathrm{ISM}/r_\mathrm{crit})$', y=1.02, fontsize = 16)
 for axs in [ax[0, 0], ax[0, 1]]:
-    axs.set_xlabel(r'$\tau$', fontsize=16)
-    axs.set_xlim(left = 0, right = 40)
+    axs.set_xlim(left = 0, right = 2)
     
 
 
 ax[0,0].set_ylim(-3, 1)
-print("Saving figure to /u/ferhi/Figures/other_cases_evolution.png")
-plt.savefig('/u/ferhi/Figures/other_cases_evolution.png', dpi = 300, bbox_inches = 'tight')
+print("Saving figure to /u/ferhi/Figures/other_cases_evolution.pdf")
+plt.savefig('/u/ferhi/Figures/other_cases_evolution.pdf', dpi = 300, bbox_inches = 'tight')
 plt.show()

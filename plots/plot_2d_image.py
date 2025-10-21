@@ -186,6 +186,7 @@ def plot_projection(
     y_dir = (view_dir + 2) % dim
     z_dir = view_dir
 
+
     if x_data is None:
         x_data = np.linspace(0, L[x_dir]/rescale, num=L[x_dir] + 1)
     if y_data is None:

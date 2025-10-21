@@ -259,6 +259,6 @@ if __name__ == "__main__":
     plt.ylim(bottom = 1)
     plt.legend()
     plt.grid()
-    plt.savefig(f'cloud_separation_8rcl_{dimensions[0]}_.png', dpi=300, bbox_inches = 'tight')
+    plt.savefig(f'cloud_separation_8rcl_{dimensions[0]}_.pdf', dpi=300, bbox_inches = 'tight')
     plt.show()
 

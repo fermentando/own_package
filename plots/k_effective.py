@@ -119,7 +119,8 @@ def main_parallel(realizations, grid_dims_list, n_jobs, output_file=None):
 
     fig.tight_layout()
     if output_file:
-        plt.savefig(output_file)
+        print("This is the output file:", output_file)
+        plt.savefig(output_file, dpi=300, bbox_inches='tight')
     else:
         plt.show()
 
@@ -136,5 +137,5 @@ if __name__ == "__main__":
     realizations = [1e-1, 1e-2, 1e-3, 1e-4]
     grid_dims_list = [(800, 800, 800)]
 
-    mu_values = main_parallel(realizations, grid_dims_list, n_jobs, output_file = f'k_estimates_{grid_dims_list[0][0]}.png')
+    mu_values = main_parallel(realizations, grid_dims_list, n_jobs, output_file = f'k_estimates_{grid_dims_list[0][0]}.pdf')
     print(mu_values)

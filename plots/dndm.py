@@ -38,7 +38,7 @@ def clump_cumulative_distribution(binary_field):
     return sorted_sizes, cumulative_counts
 
 # Creating percolation fields for each lengthscale
-if False:
+if True:
     sigmas = list(np.linspace(8, 100, 40))
     p_values, sprime = compute_p_values(sigmas, 0.1)
     print("p_values:", p_values)
@@ -56,18 +56,22 @@ if False:
                 break
             buffer = simulate_percolation(dimensions, p, sigma)
             buffers.append(buffer)
-        percolations.append(np.sum(buffers, axis=0) > 0)
-    np.save("percolations.npy", percolations)
+        print(np.sum(buffers, axis=0) > 0)
+        percolations.append((np.sum(buffers, axis=0) > 0).astype(int))
+        np.save(f"percolations_{dimensions[1]}.npy", np.array(percolations))
 
 
 if __name__ == "__main__":
-    plt.figure(figsize=(10, 10))
+    plt.figure(figsize=(8, 8))
     plt.style.use('custom_plot')
     sns.set_palette("crest")
     # Loop through each percolation realization
-    percolations = np.load("/viper/u2/ferhi/percolations.npy", allow_pickle=True)
-    for i in range(len(percolations)):
-        percolation = percolations[i]
+    #percolations = np.load("percolations.npy", allow_pickle=True)
+    for i, dim in enumerate(dimension_field):
+        percolation = np.load(f"percolations_{dim[1]}.npy", allow_pickle=True)
+        #percolation = percolations[i]
+        print(percolation.shape)
+        print(percolation[120:10,120:10,120:10])
         print("Percolation no :", i)
         volumes, _ = clump_cumulative_distribution(percolation)
         volumes = volumes[np.isfinite(volumes) & (volumes > 0)]/8**3
@@ -88,21 +92,45 @@ if __name__ == "__main__":
     # plt.plot(v, power_law(v, A_est), 'r--', label='Fitted Power-law')
     # plt.fill_between(v, power_law(v, A_lower), power_law(v, A_upper), color='gray', alpha=0.3)
 
-    plt.plot(volumes, 10**3 * volumes.astype(float)**-0.8, 'r--', label=r'$ N \propto V^{-1}$')
+    #plt.plot(volumes, 10**3 * volumes.astype(float)**-0.8, 'r--', label=r'$ N \propto V^{-1}$')
     plt.fill_between(bins, 1e6, 1, where=bins < 1,
                     color='gray', alpha=0.3, interpolate=True)
-    plt.xticks([1e-2, 1e0, 1e2, 1e4], [r'$10^{-2}$', r'$10^{0}$', r'$10^{2}$', r'$10^{4}$'])
+    # Add white padding to tick labels using bbox argument
+    plt.xticks(
+        [1e-2, 1e0, 1e2, 1e4],
+        [r'$10^{-2}$', r'$10^{0}$', r'$10^{2}$', r'$10^{4}$'],
+)
+    # Separate ticks from x axis by increasing tick padding
+    plt.tick_params(axis='y', pad=10)
+    plt.tick_params(axis='x', pad=10)
+
+    x0, x1 = 1,3  # Choose x-range for reference line
+    y0 = 10          # Starting y value
+
+    # Draw the line: y = y0 * (x/x0)^-1
+    x_vals = np.array([x0, x1])
+    y_vals = y0 * (x_vals / x0)**-1
+
+    x_m2 = np.array([x0, 2])
+    y_m2 = y0 * (x_m2/x0)**-2
+    
+
+    plt.plot(x_vals, y_vals, color='k', linewidth=1)
+    plt.plot(x_m2, y_m2, color='k', linewidth=1)
+    
+    
+    plt.text(x_m2[1] *1.1, y_m2[1]*0.9 , r'$V^{-2}$', color='k', fontsize = 14, verticalalignment='top')
+    plt.text(x1 * 1.2, y_vals[1] * 1.2, r'$V^{-1}$', color='k', fontsize = 14, verticalalignment='top')
 
 
 
 
-
+    plt.xlim(left = 1e-1)
     plt.xscale('log')
     plt.yscale('log')
     plt.xlabel(r'$V \ [ r^3_\mathrm {cl} ]$')
     plt.ylim(bottom=1, top = max(ccdf_counts) * 1.5)
     plt.ylabel(r'$ N (\geq V)$')
-    plt.legend()
     plt.tight_layout()
-    plt.savefig("dndm.png", dpi=300)
+    plt.savefig("dndm.png", dpi=300, bbox_inches='tight')
     plt.show()

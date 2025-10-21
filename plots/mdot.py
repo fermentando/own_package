@@ -86,7 +86,7 @@ if __name__ == "__main__":
     print(f"N_procs set to: {N_procs} processors.")
     gout = True
     
-    run_paths = ['/viper/ptmp/ferhi/fvLism/02kc','/viper/ptmp/ferhi/fvLism/01kc']
+    run_paths = ['/viper/ptmp/ferhi/LEGACY/fvLism/02kc','/viper/ptmp/ferhi/LEGACY/fvLism/01kc']
 
 
 
@@ -103,7 +103,7 @@ if __name__ == "__main__":
             #other_dirs = glob.glob('/viper/ptmp/ferhi/d20rcl/02ekc/fv*')
             #all_runs.extend(other_dirs)
         for run_name in all_runs:
-            if "/viper/ptmp/ferhi/d20rcl/02ekc/fv03_lowres_raven" in run_name: continue
+            if "/viper/ptmp/ferhi/LEGACY/d20rcl/02ekc/fv03_lowres_raven" in run_name: continue
             if "fv01_longer" in run_name: continue
             if run_name.split('/')[-1] == 'fv01_scaleless': continue
                 
@@ -132,6 +132,7 @@ if __name__ == "__main__":
             # Linear sum
             t_linear = t1 + t2
             tcool = get_t_cool_cgs(sim.rho_cloud, sim.T_cloud, sim.mbar)
+            tcoolmin = get_t_cool_min(sim.rho_cloud, sim.T_cloud, sim.mbar)
             cs = get_c_s(sim.T_wind)
             tsc =  (0.1 * sigma[-1] )* chi**0.5 * sim.R_cloud / sim.v_wind
             tcooleff = (tsc * tcool) ** 0.5
@@ -191,7 +192,7 @@ fig.legend(
     handles=fv_legend_elements,
     loc='upper center',
     ncol=3,
-    bbox_to_anchor=(0.5, 1.05),  # Slightly above the plot
+    bbox_to_anchor=(0.5, 1.005),  # Slightly above the plot
     frameon=True,
 )
 
@@ -220,6 +221,6 @@ ax[0,0].set_ylabel(r'$\dot{m} \,  t_\mathrm{grow} / m_\mathrm{0}$', labelpad=5)
     
 
 
-
-plt.savefig('/u/ferhi/Figures/tgrow_mdot.png', dpi = 300, bbox_inches = 'tight')
+print('Saved to: ', '/u/ferhi/Figures/tgrow_mdot.pdf')
+plt.savefig('/u/ferhi/Figures/tgrow_mdot.pdf', dpi = 300, bbox_inches = 'tight')
 plt.show()

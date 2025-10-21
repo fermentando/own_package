@@ -54,6 +54,8 @@ def plot_vturb_all_runs(run_list, outdir):
             fv = 10 ** (-base_fv)
             linestyle = linestyles.get(base_fv, '-')
             color = sm.to_rgba(tccfact)
+            if "d20rcl" in run: color = 'orange'
+            if "scaleless" in run: color = 'purple'
 
             try:
                 result = hdf_turb(run, mode)
@@ -80,10 +82,12 @@ def plot_vturb_all_runs(run_list, outdir):
         ax[m].set_ylim(top=5)
 
     ax[0].set_ylabel(r'$v_{\mathrm{turb}} / c_{\mathrm{s,cold}}$')
+    ax[0].set_title(r'$ T \leq 10^5$ K ', size = 18)
+    ax[1].set_title(r'$ T > 10^5$ K ', size = 18)
 
     # Add colorbar
     sm.set_array([]) 
-    cax = fig.add_axes([0.15, 0.95, 0.7, 0.03])  # [left, bottom, width, height] in figure fraction
+    cax = fig.add_axes([0.15, 1.01, 0.7, 0.03])  # [left, bottom, width, height] in figure fraction
     cbar = fig.colorbar(sm, cax=cax, orientation='horizontal')
     cbar.set_label(r'$L_{\mathrm{ISM}}$ [$r_{\mathrm{cl}}$]', labelpad=10)
     cbar.ax.xaxis.set_label_position('top')
@@ -100,23 +104,34 @@ def plot_vturb_all_runs(run_list, outdir):
     ax[1].legend(
         handles=fv_legend_elements,
         loc='upper right',
-        #ncol=2,
-        #bbox_to_anchor=(0.5, 1.05),
+        frameon=True
+    )
+
+    # Add color legend for special runs on ax[0]
+    color_legend_elements = [
+        Line2D([0], [0], color='orange', linestyle='-', label=r'$\mathcal{M}_w = 0.7$'),
+        Line2D([0], [0], color='purple', linestyle='-', label=r'$\mathcal{M}_w = 2$'),
+    ]
+    ax[0].legend(
+        handles=color_legend_elements,
+        loc='upper right',
         frameon=True
     )
 
     # Save
     os.makedirs(outdir, exist_ok=True)
-    plt.savefig(os.path.join(outdir, "yavsh_vturb_cold_hot.png"), dpi=300, bbox_inches="tight")
-    print(f"Saved figure to {outdir}/yavsh_vturb_cold_hot.png")
+    plt.savefig(os.path.join(outdir, "yavsh_vturb_cold_hot.pdf"), dpi=300, bbox_inches="tight")
+    print(f"Saved figure to {outdir}/yavsh_vturb_cold_hot.pdf")
     plt.close()
 
 if __name__ == "__main__":
     runs = [
-        '/viper/ptmp/ferhi/fvLism/01kc/fv01_30r/',
-        '/viper/ptmp/ferhi/fvLism/01kc/fv02/',
-        '/viper/ptmp/ferhi/fvLism/01kc/fv02_destr/',
-        '/viper/ptmp/ferhi/fvLism/kc/fv01_shorter/',  
+        '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r/',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv02/',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv02_destr/',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/kc/fv01_shorter/',  
+        '/viper/ptmp/ferhi/LEGACY/d20rcl/01ekc/fv02',
+        '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_scaleless_mach2',
     ]
     
     plot_vturb_all_runs(runs, outdir='/u/ferhi/Figures/')
