@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import matplotlib.style as style
 import yt
 from yt.units import dyn, cm, K
+import os
 
 style.core.USER_LIBRARY_PATHS.append('custom_plot')
 
@@ -52,11 +53,11 @@ def _luminosity_normalized(field, data):
 fields = {
 
     'density': ("gas", "density"),
-    'pressure': ("gas", "pressure_normalized"),
+    #'pressure': ("gas", "pressure_normalized"),
     'temperature': ("gas", "temperature"),
     'velocity_y': ("gas", "velocity_y"),
-    'velocity_z': ('gas', 'velocity_z'),
-    'scalar':   ("gas", "mixing_gas_flag"),
+    #'velocity_z': ('gas', 'velocity_z'),
+    #'scalar':   ("gas", "mixing_gas_flag"),
 
 }
 
@@ -67,6 +68,7 @@ class constants:
     kb = 1.3806488e-16 #cgs
     kpc_over_cm = 3.24078e-22
     s_to_Myrs = 3.1710e-14 
+    pc_to_cm = 3.086e+18
     G = 6.67430e-8 #cgs
 
     Xsol = 1.0
@@ -178,3 +180,30 @@ def get_n_procs_and_user_args():
     n_procs = max(1, min(args.N_procs, cpu_count()))
 
     return n_procs, remaining_args
+
+def get_working_dirs():
+
+    N_procs, user_args = get_n_procs_and_user_args()
+    print(f"N_procs set to: {N_procs} processors.")
+    gout = True
+    
+    if len(user_args) > 0:
+        RUNS = [os.getcwd()]
+        run_paths = RUNS
+        parts = RUNS[0].split('/')
+        saveFile = f"{parts[-1]}"
+        print('Saved to: ', saveFile)
+        
+    else:
+        runDir = os.getcwd()
+        run_paths = np.array([
+            os.path.join(runDir, folder) 
+            for folder in os.listdir(runDir) 
+            if os.path.isdir(os.path.join(runDir, folder)) and 'restrat.in' in os.listdir(os.path.join(runDir, folder)) 
+        ])
+        parts = runDir.split('/')
+        saveFile = f"{parts[-2]}/{parts[-1]}"
+        if not os.path.exists(os.path.join('/u/ferhi/Figures/',parts[-2])): 
+            os.makedirs(os.path.join('/u/ferhi/Figures/',parts[-2]))
+
+    return run_paths, saveFile

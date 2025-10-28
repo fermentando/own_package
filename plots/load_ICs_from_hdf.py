@@ -21,7 +21,7 @@ def ICs_from_file(file, filepath=None):
 def reICs_file(file, filename_input='restrat.in', localDir='.', insert_sphere_radius = 0.0):
     
     full_rho, full_prs, full_vel2 = ICs_from_file(file, filepath=filename_input)
-
+    
     params = load_params(filename_input)
     stratified_box = StratifiedBox(filename_input, os.path.abspath(os.path.join(filename_input, '..')))
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
@@ -29,7 +29,7 @@ def reICs_file(file, filename_input='restrat.in', localDir='.', insert_sphere_ra
     code_length_cgs = float(params['reader'].get('units', 'code_length_cgs'))
     mbar_over_kb = stratified_box.mbar/ut.constants.kb
 
-    mom = np.ones((nx1, nx2, nx3)) * full_rho * full_vel2   
+    mom = np.ones_like(full_rho) * full_rho * full_vel2   
     en = full_prs / (params['gamma'] - 1) + 0.5 * full_rho * full_vel2**2
 
     rho_cloud, mom_cloud, en_cloud = insert_sphere(full_rho, mom, en, r=params['r_cloud_inserted'] * code_length_cgs, 
@@ -63,5 +63,5 @@ if __name__ == "__main__":
     localDir = os.getcwd()
     filename_input = os.path.join(localDir, 'restrat.in')
 
-    reICs_file('/viper/ptmp/ferhi/StratDisk/InfallingClouds/reference.phdf', filename_input, localDir)
+    reICs_file(os.path.join(localDir, 'reference.phdf'), filename_input, localDir)
 
