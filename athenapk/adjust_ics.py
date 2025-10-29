@@ -325,6 +325,13 @@ class StratifiedBox:
         nx2 = float(self.reader.get('parthenon/mesh', 'nx2'))
         x2min, x2max = float(self.reader.get('parthenon/mesh', 'x2min')), float(self.reader.get('parthenon/mesh', 'x2max'))
         dcell = (x2max - x2min)/nx2
+        mach = float(self.reader.get('problem/turbulence', 'Mach_drive'))
+        k_peak = float(self.reader.get('problem/turbulence', 'kpeak'))
+        Lymin, Lymax = float(self.reader.get('parthenon/mesh', 'x1min')), float(self.reader.get('parthenon/mesh', 'x1max'))
+        Ldrive = (Lymax - Lymin) / k_peak * self.code_length_cgs
+        vs = get_c_s(self.T_base) * mach 
+        t_eddy = Ldrive / vs 
+        
         print(f"""
         >> Strat disk properties <<
 
@@ -337,6 +344,8 @@ class StratifiedBox:
         n_0 = {self.env_rho/self.mbar:.3e} pc
         chi = {self.chi}
         t_cool = {get_t_cool_cgs(self.cloud_rho, 1e4, self.mbar) * ut.constants.s_to_Myrs :.3e} Myrs
+        t_cc = {self.chi * self.r_cloud_inserted * self.code_length_cgs / (self.g * self.t_grow_subsonic)* ut.constants.s_to_Myrs:.3e} Myrs
+        t_eddy = {t_eddy* ut.constants.s_to_Myrs:.3e} Myrs
 
         surv_ratio = {get_t_cool_cgs(self.cloud_rho, 1e4, self.mbar) * ut.constants.s_to_Myrs/
                       (5e-3 * (self.r_cloud_inserted/100)**(1/5) * (self.g / 1e-8)**(-4/5) * (self.chi/100)**(-12/5))
@@ -391,10 +400,10 @@ class StratifiedBox:
         t_eddy = L_drive/v_turb
         accel_rms  = v_turb**2 / (L_drive) 
 
-        tlim = 10*t_eddy
+        tlim = 60*t_eddy
         dt_hst = 0.001*t_eddy 
         dt_hdf = 0.5*t_eddy 
-        dt_rst = 10*t_eddy 
+        dt_rst = 2*t_eddy 
         
         print("this is dt_hdf: ", dt_hdf)
         self.reader.set_('problem/stratified_box', 'rescale_code_time_to_tff', 'false')
@@ -683,8 +692,8 @@ if __name__ == "__main__":
                 raise ValueError("Invalid choice: pick amongst checking the current survival ratio, 'check', or adjusting to new ratio, 'adjust' followed by your new t_coolmix/t_cc value.")
         
 
-    elif os.path.isfile(os.path.join(localDir, "strat.in")):
-        sim = StratifiedBox(os.path.join(localDir, 'strat.in'), dir=localDir)
+    elif os.path.isfile(os.path.join(localDir, "restrat.in")):
+        sim = StratifiedBox(os.path.join(localDir, 'restrat.in'), dir=localDir)
         command = str.lower(sys.argv[1])
         match command:
             case "check":

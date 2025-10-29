@@ -32,7 +32,7 @@ def load_params(filename_input):
 
 def generate_ICs(filename_input, filename='ICs.bp', localDir='.'):
 
-    full_box_rho, nghosts = gen_rho_strat(filename_input)
+    full_box_rho = gen_rho_strat(filename_input)
     
 
     params = load_params(filename_input)
@@ -43,11 +43,11 @@ def generate_ICs(filename_input, filename='ICs.bp', localDir='.'):
     code_length_cgs = float(params['reader'].get('units', 'code_length_cgs'))
     code_mass_cgs = float(params['reader'].get('units', 'code_mass_cgs'))
 
-    mom = np.zeros_like(full_box_rho)
+    mom1 = np.zeros_like(full_box_rho); mom2 = np.zeros_like(full_box_rho); mom3 = np.zeros_like(full_box_rho)
     en = 0.5 * mom**2 / full_box_rho +  params['T_base'] / mbar_over_kb * full_box_rho / (params['gamma'] - 1)
 
     # Insert cloud
-    rho_with_cloud, mom_with_cloud, en_with_cloud = insert_sphere(full_box_rho, mom, en, r=params['r_cloud_inserted'] * code_length_cgs, 
+    rho_with_cloud, mom1_with_cloud, mom2_with_cloud, mom3_with_cloud, en_with_cloud = insert_sphere(full_box_rho, mom1, mom2, mom3, en, r=params['r_cloud_inserted'] * code_length_cgs, 
                             T_cloud=params['T_cloud'], 
                             mbar_over_kb=mbar_over_kb, gamma=params['gamma'], T_base = params['T_base'],
                             x_range=(params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
@@ -55,10 +55,7 @@ def generate_ICs(filename_input, filename='ICs.bp', localDir='.'):
                             z_range=(params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs),
                             inplace=False)
     
-    domain_rho = rho_with_cloud[:, nghosts:-nghosts, :]
-    domain_mom = mom_with_cloud[:, nghosts:-nghosts, :]
-    domain_en = en_with_cloud[:, nghosts:-nghosts, :]
-    fields_ICs = (domain_rho, domain_mom, domain_en)
+    fields_ICs = (rho_with_cloud, mom1_with_cloud, mom2_with_cloud, mom3_with_cloud, en_with_cloud)
 
     
     MeshBlockSize = (mbl3, mbl2, mbl1)
@@ -131,9 +128,6 @@ def gen_rho_strat(filename_input):
     params = load_params(filename_input)
     stratified_box = StratifiedBox(filename_input, os.path.abspath(os.path.join(filename_input, '..')))
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
-    nghosts = int(params['reader'].get('parthenon/mesh', 'nghost'))
-    nx2 += 2 * nghosts
-    mbl1, mbl2, mbl3 = (int(params['reader'].get('parthenon/meshblock', f'nx{i}')) for i in range(1,4))
     mbar_over_kb = stratified_box.mbar/ut.constants.kb 
     code_length_cgs = float(params['reader'].get('units', 'code_length_cgs'))
     code_mass_cgs = float(params['reader'].get('units', 'code_mass_cgs'))
@@ -179,18 +173,14 @@ def gen_rho_strat(filename_input):
     params['x2min'] = x2min_new
     params['x2max'] = x2max_new
     
-    # Recalculate dy with new boundaries
-    dy = (params['x2max'] - params['x2min']) / (nx2) * code_length_cgs
-    dx = (params['x1max'] - params['x1min']) / (nx1) * code_length_cgs
-    dz = (params['x3max'] - params['x3min']) / (nx3) * code_length_cgs
     
     full_box_rho = isothermal_strat(nx1, nx2, nx3, rho_0, params['a_over_H'], H,
                         (params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
-                        (params['x2min'] * code_length_cgs - nghosts * dy, params['x2max'] * code_length_cgs + nghosts * dy),
+                        (params['x2min'] * code_length_cgs, params['x2max'] * code_length_cgs),
                         (params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs))
-    return full_box_rho, nghosts
+    return full_box_rho
 
-def insert_sphere(density, mom, energy,
+def insert_sphere(density, mom1, mom2, mom3, energy,
                   r,
                   T_cloud,
                   mbar_over_kb,
@@ -217,7 +207,7 @@ def insert_sphere(density, mom, energy,
     
     if r <= 0:
         print("WARNING: r must be positive. Defaulting to no cloud.")
-        return density, mom, energy
+        return density, mom1, mom2, mom3, energy
     if not (y_range[0] <= y_center <= y_range[1]):
         raise ValueError("Computed y_center is outside the provided y_range."
                        " Check r and y_range values.")
@@ -235,10 +225,10 @@ def insert_sphere(density, mom, energy,
         return rho_cloud, np.average(density[mask]), y_center
     else:
         density[mask] = rho_cloud
-        mom[mask] = 0.0
+        mom1[mask] = mom2[mask] = mom3[mask] = 0.0
         energy_value = (T_cloud / mbar_over_kb) * rho_cloud / (gamma - 1.0)
         energy[mask] = energy_value
-        return density, mom, energy
+        return density, mom1, mom2, mom3, energy
 
 
 if __name__ == "__main__":

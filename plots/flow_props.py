@@ -47,7 +47,7 @@ if __name__ == "__main__":
     run_paths, saveFile = get_working_dirs()
 
     for j, run in enumerate(run_paths):
-        sim = StratifiedBox(os.path.join(run, 'strat.in'), dir=run)
+        sim = StratifiedBox(os.path.join(run, 'restrat.in'), dir=run)
         code_time_cgs = float(sim.reader.get('units', 'code_time_cgs'))
         code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
         files = np.sort(glob.glob(os.path.join(run, 'out/parthenon.prim.*.phdf')))

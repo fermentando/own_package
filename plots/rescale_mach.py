@@ -86,21 +86,26 @@ def rescale_to_rms_mach(file, target_rms_Ms, filename_input='restart.in', localD
         raise ValueError("Target Mach number must be positive!")
     
     # Calculate rescaling factor
-    # We want: Ms_new^2 = Ms_target^2
-    # Since Ms^2 ∝ KE/P, and we keep KE constant, we need P_new = P_old / norm
-    # where norm = (Ms_target / Ms_current)^2
+    # norm = (Ms_target / Ms_current)^2
+    # To decrease Mach number, we increase temperature/pressure by dividing internal energy by norm
+    # Following the C++ code: e_new = e_old / norm
     norm = (target_rms_Ms / current_rms_Ms)**2
     
     print(f"Rescaling factor: {norm:.6f}")
     
-    # Rescale pressure (or equivalently, temperature)
-    # This is done by changing the internal energy while keeping kinetic energy constant
-    full_prs_rescaled = full_prs * norm
+    # Calculate specific internal energy: e = (E_total - KE) / rho
+    specific_internal_energy = (full_prs / (gamma - 1.0)) / full_rho
+    
+    # Rescale specific internal energy (this is what the C++ code does)
+    # e_new = e_old / norm
+    specific_internal_energy_rescaled = specific_internal_energy / norm
     
     # Calculate new total energy
-    # E_total = E_internal + E_kinetic
-    # E_internal = P / (gamma - 1)
-    en_rescaled = full_prs_rescaled / (gamma - 1.0) + kin_en_density
+    # E_total = rho * e_specific + KE
+    en_rescaled = kin_en_density + specific_internal_energy_rescaled * full_rho
+    
+    # Calculate new pressure for verification
+    full_prs_rescaled = specific_internal_energy_rescaled * full_rho * (gamma - 1.0)
     
     # Verify the rescaling
     local_Ms2_new = 2.0 * kin_en_density / (gamma * full_prs_rescaled)
@@ -118,27 +123,21 @@ def rescale_to_rms_mach(file, target_rms_Ms, filename_input='restart.in', localD
     # Optional: insert sphere if needed (adjust parameters as in your original code)
     if 'r_cloud_inserted' in params and params['r_cloud_inserted'] > 0:
         print("\nInserting sphere...")
+        print("Cloud of radius/cell: ", params['r_cloud_inserted']/dx )
         stratified_box = StratifiedBox(filename_input, 
                                        os.path.abspath(os.path.join(filename_input, '..')))
         mbar_over_kb = stratified_box.mbar / ut.constants.kb
         
-        # For simplicity, using total momentum magnitude
-        mom_total = np.sqrt(mom1**2 + mom2**2 + mom3**2)
         
-        rho_cloud, mom_cloud, en_cloud = insert_sphere(
-            full_rho, mom_total, en_rescaled,
-            r=params['r_cloud_inserted'] * code_length_cgs,
-            T_cloud=params['T_cloud'],
-            mbar_over_kb=mbar_over_kb,
-            gamma=gamma,
-            T_base=params['T_base'],
-            x_range=(params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
-            y_range=(params['x2min'] * code_length_cgs, params['x2max'] * code_length_cgs),
-            z_range=(params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs),
-            inplace=False
-        )
+        rho_cloud, mom1_cloud, mom2_cloud, mom3_cloud, en_cloud = insert_sphere(full_rho, mom1, mom2, mom3, en_rescaled, r=params['r_cloud_inserted'] * code_length_cgs, 
+                                T_cloud=params['T_cloud'], 
+                                mbar_over_kb=mbar_over_kb, gamma=params['gamma'], T_base = params['T_base'],
+                                x_range=(params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
+                                y_range=(params['x2min'] * code_length_cgs, params['x2max'] * code_length_cgs),
+                                z_range=(params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs),
+                                inplace=False)
         
-        fields = (rho_cloud, mom_cloud, en_cloud)
+        fields = (rho_cloud, mom1_cloud, mom2_cloud, mom3_cloud, en_cloud)
     else:
         fields = (full_rho, mom1, mom2, mom3, en_rescaled)
     
@@ -187,14 +186,15 @@ def rescale_to_rms_mach(file, target_rms_Ms, filename_input='restart.in', localD
 if __name__ == "__main__":
     # Adjust these parameters for your use case
     localDir = os.getcwd()
-    filename_input = os.path.join(localDir, 'strat.in')
+    input_hdf = os.path.join(localDir, 'turb_init.phdf')
+    filename_input = os.path.join(localDir, 'restrat.in')
     sim = StratifiedBox(filename_input, localDir)
-    target_mach = sim.Mach  # Target RMS Mach number
+    target_mach = float(sim.reader.get('problem/turbulence', 'Mach_drive'))  # Target RMS Mach number
     
     rescaled_data = rescale_to_rms_mach(
-        file=input_file,
+        file=input_hdf,
         target_rms_Ms=target_mach,
-        filename_input='restart.in',
+        filename_input=filename_input,
         localDir='.'
     )
     
