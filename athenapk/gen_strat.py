@@ -44,18 +44,34 @@ def generate_ICs(filename_input, filename='ICs.bp', localDir='.'):
     code_mass_cgs = float(params['reader'].get('units', 'code_mass_cgs'))
 
     mom1 = np.zeros_like(full_box_rho); mom2 = np.zeros_like(full_box_rho); mom3 = np.zeros_like(full_box_rho)
-    en = 0.5 * mom**2 / full_box_rho +  params['T_base'] / mbar_over_kb * full_box_rho / (params['gamma'] - 1)
+    en = 0.5 * (mom1**2 + mom2**2 + mom3**2)/ full_box_rho +  params['T_base'] / mbar_over_kb * full_box_rho / (params['gamma'] - 1)
 
     # Insert cloud
-    rho_with_cloud, mom1_with_cloud, mom2_with_cloud, mom3_with_cloud, en_with_cloud = insert_sphere(full_box_rho, mom1, mom2, mom3, en, r=params['r_cloud_inserted'] * code_length_cgs, 
-                            T_cloud=params['T_cloud'], 
-                            mbar_over_kb=mbar_over_kb, gamma=params['gamma'], T_base = params['T_base'],
-                            x_range=(params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
-                            y_range=(params['x2min'] * code_length_cgs, params['x2max'] * code_length_cgs),
-                            z_range=(params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs),
-                            inplace=False)
+    if float(stratified_box.reader.get('problem/stratified_box', 'inject_once_at_time')) <= 0:
+        rho_with_cloud, mom1_with_cloud, mom2_with_cloud, mom3_with_cloud, en_with_cloud = insert_sphere(full_box_rho, mom1, mom2, mom3, en, r=params['r_cloud_inserted'] * code_length_cgs, 
+                                T_cloud=params['T_cloud'], 
+                                mbar_over_kb=mbar_over_kb, gamma=params['gamma'], T_base = params['T_base'],
+                                x_range=(params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
+                                y_range=(params['x2min'] * code_length_cgs, params['x2max'] * code_length_cgs),
+                                z_range=(params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs),
+                                inplace=False)
+        fields_ICs = (rho_with_cloud, mom1_with_cloud, mom2_with_cloud, mom3_with_cloud, en_with_cloud)
+    else:
+        _, _, y_centre = insert_sphere(full_box_rho, mom1, mom2, mom3, en, r=params['r_cloud_inserted'] * code_length_cgs, 
+                                T_cloud=params['T_cloud'], 
+                                mbar_over_kb=mbar_over_kb, gamma=params['gamma'], T_base = params['T_base'],
+                                x_range=(params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
+                                y_range=(params['x2min'] * code_length_cgs, params['x2max'] * code_length_cgs),
+                                z_range=(params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs),
+                                inplace=False, return_cloud_rho=True)
     
-    fields_ICs = (rho_with_cloud, mom1_with_cloud, mom2_with_cloud, mom3_with_cloud, en_with_cloud)
+        loc = [0, y_centre/stratified_box.code_length_cgs, 0]
+        print("Updating cloud loc in input file to: ", loc)
+        stratified_box.reader.set_('problem/stratified_box', 'loc_cloud_inserted', loc)
+        stratified_box.reader.save()
+        fields_ICs = (full_box_rho, mom1, mom2, mom3, en)
+    
+
 
     
     MeshBlockSize = (mbl3, mbl2, mbl1)
@@ -168,6 +184,7 @@ def gen_rho_strat(filename_input):
     # Update the reader
     stratified_box.reader.set_('parthenon/mesh', 'x2min', x2min_new)
     stratified_box.reader.set_('parthenon/mesh', 'x2max', x2max_new)
+    stratified_box.reader.save()
     
     # Update params dictionary
     params['x2min'] = x2min_new

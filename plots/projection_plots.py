@@ -163,9 +163,10 @@ class ImageConverter:
             fig.savefig(output_path,bbox_inches='tight', pad_inches=0.05, dpi=300)
             print(f"Generated multiplot for file {index} at {output_path}")
 
-    def multiplot(self, mode = "all"):
+    def multiplot(self, mode = "all", init_frame = 0):
         """Runs multiplot generation in parallel"""
         file_list = np.sort(glob.glob(os.path.join(self.generateDir, "out/*prim.[0-9]*.phdf")))
+        file_list = file_list[init_frame:]
 
         with multiprocessing.Pool(processes=self.num_workers) as pool:
             if mode == "all":
@@ -228,10 +229,17 @@ if __name__ == "__main__":
         print('Not user args') 
         sim.multiplot()
     elif 'density' in user_args:
-        sim.multiplot(mode='density')
+        if len(user_args) > 1:
+            sim.multiplot(mode='density', init_frame=int(user_args[1]))
+        else: 
+            sim.multiplot(mode='density')
     elif 'temperature' in user_args:
         sim.multiplot(mode='temperature')
     else:
         print('Else')
-        sim.multiplot(mode = str(sys.argv[1]))
-
+        if len(user_args) > 1:
+            print("Figure for snapshot: ", user_args[1])
+            print("For mode: ", user_args[0])
+            sim.multiplot(mode = str(user_args[0]), init_frame=int(user_args[1]))
+        else:
+            sim.multiplot(mode = str(user_args[0]))

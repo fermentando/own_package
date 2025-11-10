@@ -210,8 +210,9 @@ class StratifiedBox:
         self._load_cooling_table(dir)
         self._cloud_conditions()
         self._enforce_cartesian_grid()
-        if 'simple' not in type_box: self._set_t_corr()
         self._timescales()
+        if 'simple' not in type_box: self._set_t_corr()
+        
 
 
     def _initialize_constants(self):
@@ -338,6 +339,8 @@ class StratifiedBox:
         H = {self.H/ut.constants.pc_to_cm:.3e} pc
         g = {self.g:.3e} cgs
         r_cl / d_cell = {self.r_cloud_inserted /dcell:.3e} 
+        L_drive / H = {Ldrive / self.H:.3e}
+        Fr = {self.H / Ldrive * mach}
 
                      
         R_cl = {self.r_cloud_inserted:.3e} pc
@@ -370,7 +373,6 @@ class StratifiedBox:
     def _enforce_cartesian_grid(self):
         nx1 = int(self.reader.get('parthenon/mesh', 'nx1'))
         nx2 = int(self.reader.get('parthenon/mesh', 'nx2'))
-        print(nx2)
         xmin1, xmax1 = float(self.reader.get('parthenon/mesh', 'x1min')), float(self.reader.get('parthenon/mesh', 'x1max'))
         xmin2, xmax2 = float(self.reader.get('parthenon/mesh', 'x2min')), float(self.reader.get('parthenon/mesh', 'x2max'))
         cell_size_y = (xmax2 - xmin2) / nx2
@@ -400,13 +402,15 @@ class StratifiedBox:
         t_eddy = L_drive/v_turb
         accel_rms  = v_turb**2 / (L_drive) 
 
-        tlim = 60*t_eddy
+        t_injec = 20 * t_eddy
+        tlim = 50 * self.t_ff / code_time_cgs + t_injec
         dt_hst = 0.001*t_eddy 
-        dt_hdf = 0.5*t_eddy 
+        dt_hdf = 0.2*t_eddy 
         dt_rst = 2*t_eddy 
         
-        print("this is dt_hdf: ", dt_hdf)
         self.reader.set_('problem/stratified_box', 'rescale_code_time_to_tff', 'false')
+        self.reader.set_('problem/stratified_box', 'inject_once_at_time', t_injec)
+        self.reader.set_('cooling', 'start_time', t_injec)
         self.reader.set_('problem/turbulence', 'corr_time', t_eddy)
         #self.reader.set_('hydro', 'pfloor', p_floor)
         self.reader.set_('problem/turbulence', 'accel_rms', accel_rms)
@@ -415,7 +419,7 @@ class StratifiedBox:
         self.reader.set_('parthenon/output2', 'dt', dt_hdf)
         self.reader.set_('parthenon/output3', 'dt', dt_rst)
         self.reader.save()
-        print(f"Driving correlation time set to {t_eddy:.3e} s")
+
     
     def enlarge_dim(self, increase_factor, axs):
         for axis in axs:
@@ -692,8 +696,8 @@ if __name__ == "__main__":
                 raise ValueError("Invalid choice: pick amongst checking the current survival ratio, 'check', or adjusting to new ratio, 'adjust' followed by your new t_coolmix/t_cc value.")
         
 
-    elif os.path.isfile(os.path.join(localDir, "restrat.in")):
-        sim = StratifiedBox(os.path.join(localDir, 'restrat.in'), dir=localDir)
+    elif os.path.isfile(os.path.join(localDir, "strat.in")):
+        sim = StratifiedBox(os.path.join(localDir, 'strat.in'), dir=localDir)
         command = str.lower(sys.argv[1])
         match command:
             case "check":
