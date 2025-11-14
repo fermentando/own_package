@@ -87,8 +87,8 @@ class ImageConverter:
             #proj.set_zlim(field, 1e-26, 1e-22)
             colorbar = proj.plots[field].cb
 
-            colorbar.ax.set_aspect(40)  
-            colorbar.ax.set_position([1.15, 0.1, 0.02, 0.8])  
+            #colorbar.ax.set_aspect(40)  
+            #colorbar.ax.set_position([1.15, 0.1, 0.02, 0.8])  
 
 
             #proj.set_width((right_edge[0] - left_edge[0], y_cut - left_edge[1]))
@@ -233,8 +233,6 @@ if __name__ == "__main__":
             sim.multiplot(mode='density', init_frame=int(user_args[1]))
         else: 
             sim.multiplot(mode='density')
-    elif 'temperature' in user_args:
-        sim.multiplot(mode='temperature')
     else:
         print('Else')
         if len(user_args) > 1:

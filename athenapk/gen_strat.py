@@ -57,18 +57,7 @@ def generate_ICs(filename_input, filename='ICs.bp', localDir='.'):
                                 inplace=False)
         fields_ICs = (rho_with_cloud, mom1_with_cloud, mom2_with_cloud, mom3_with_cloud, en_with_cloud)
     else:
-        _, _, y_centre = insert_sphere(full_box_rho, mom1, mom2, mom3, en, r=params['r_cloud_inserted'] * code_length_cgs, 
-                                T_cloud=params['T_cloud'], 
-                                mbar_over_kb=mbar_over_kb, gamma=params['gamma'], T_base = params['T_base'],
-                                x_range=(params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
-                                y_range=(params['x2min'] * code_length_cgs, params['x2max'] * code_length_cgs),
-                                z_range=(params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs),
-                                inplace=False, return_cloud_rho=True)
-    
-        loc = [0, y_centre/stratified_box.code_length_cgs, 0]
-        print("Updating cloud loc in input file to: ", loc)
-        stratified_box.reader.set_('problem/stratified_box', 'loc_cloud_inserted', loc)
-        stratified_box.reader.save()
+
         fields_ICs = (full_box_rho, mom1, mom2, mom3, en)
     
 
@@ -105,7 +94,7 @@ def gen_init_params(params, code_mass_cgs, code_length_cgs, mbar_over_kb):
     c_s = np.sqrt(params['T_base'] / mbar_over_kb)
     H = c_s**2/ g0
     rho_0 = (params['surface_density'] * code_mass_cgs / code_length_cgs**2
-    ) / (2 * H)
+    ) / (2 * params['a_over_H'] * H)
     print(f"c_s = {c_s/1e5:.3e} km/s")
     print(f"Using rho_0 = {rho_0:.3e} g/cm^3, H = {H/code_length_cgs:.3e} code units, g0 = {g0:.3e} cm/s^2")
 
@@ -150,46 +139,7 @@ def gen_rho_strat(filename_input):
     
     # Get initial parameters
     g0, H, rho_0 = gen_init_params(params, code_mass_cgs, code_length_cgs, mbar_over_kb=mbar_over_kb)
-    
-    # Calculate target density at boundaries
-    rho_target = 0.0001 * stratified_box.mbar 
-    
-    # Find y-coordinate where density equals rho_target (positive side)
-    y_boundary = find_y_for_density(rho_target, rho_0, params['a_over_H'], H)
-    
-    # Calculate cloud position: 10*r_cloud from upper boundary
-    r_cloud_cgs = params['r_cloud_inserted'] * code_length_cgs
-    
-    # Total domain size needed so that:
-    # x2max = y_boundary and is at 0.9 of total domain
-    # This means: y_boundary = 0.9 * total_domain
-    total_domain = y_boundary / 0.9
-    
-    # Set new x2min and x2max in code units
-    x2max_new = 0.9 * total_domain / code_length_cgs
-    x2min_new = -0.1 * total_domain / code_length_cgs
-    
-    # Verify cloud position is valid (10*r from x2max)
-    y_cloud_cgs = (x2max_new * code_length_cgs) - 10 * r_cloud_cgs
-    y_cloud = y_cloud_cgs / code_length_cgs
-    
-    print(f"Adjusting x2 boundaries:")
-    print(f"  Old x2min: {params['x2min']:.6f}, Old x2max: {params['x2max']:.6f}")
-    print(f"  New x2min: {x2min_new:.6f}, New x2max: {x2max_new:.6f}")
-    print(f"  Total domain size: {total_domain/code_length_cgs:.6f} (code units)")
-    print(f"  x2max/total: {x2max_new/(total_domain/code_length_cgs):.2f}, x2min/total: {x2min_new/(total_domain/code_length_cgs):.2f}")
-    print(f"  Boundary density at x2max: {rho_target:.6e} (code units)")
-    print(f"  Cloud position: y = {y_cloud:.6f} (code units), distance from x2max: {(x2max_new - y_cloud)*code_length_cgs/r_cloud_cgs:.1f}*r")
-    
-    # Update the reader
-    stratified_box.reader.set_('parthenon/mesh', 'x2min', x2min_new)
-    stratified_box.reader.set_('parthenon/mesh', 'x2max', x2max_new)
-    stratified_box.reader.save()
-    
-    # Update params dictionary
-    params['x2min'] = x2min_new
-    params['x2max'] = x2max_new
-    
+     
     
     full_box_rho = isothermal_strat(nx1, nx2, nx3, rho_0, params['a_over_H'], H,
                         (params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),

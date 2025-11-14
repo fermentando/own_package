@@ -257,10 +257,14 @@ class StratifiedBox:
         c_s = np.sqrt(self.T_base / mbar_over_kb)
         self.H = c_s**2/ self.g
         rho_base = (self.surface_density * self.code_mass_cgs / (self.code_length_cgs)**2) / (2 * self.H)
-
-        self.y_centre = float(self.reader.get('parthenon/mesh', 'x2max')) - self.r_cloud_inserted * 10
+        
+        wmax = float(self.reader.get('problem/turbulence', 'window_xmax'))
+        self.y_centre = float(self.reader.get('parthenon/mesh', 'x2min')) + 0.5 * ( float(self.reader.get('parthenon/mesh', 'x2max')) - float(self.reader.get('parthenon/mesh', 'x2min')) )
         self.env_rho = rho_base * np.exp(-self.a_over_H * (np.sqrt(1 + (self.y_centre * self.code_length_cgs / (self.a_over_H * self.H))**2) - 1))
         self.cloud_rho = self.chi * self.env_rho
+
+        self.reader.set_('problem/stratified_box', 'loc_cloud_inserted', [0,self.y_centre,0])
+        self.reader.save()
 
     def _timescales(self):
         Myr = 3.154e13            # seconds
@@ -332,6 +336,8 @@ class StratifiedBox:
         Ldrive = (Lymax - Lymin) / k_peak * self.code_length_cgs
         vs = get_c_s(self.T_base) * mach 
         t_eddy = Ldrive / vs 
+        t_r_eddy = self.r_cloud_inserted * ut.constants.pc_to_cm / vs * (self.chi)**0.5
+        Lambda_units = float(self.reader.get('cooling', 'lambda_units_cgs'))
         
         print(f"""
         >> Strat disk properties <<
@@ -341,25 +347,18 @@ class StratifiedBox:
         r_cl / d_cell = {self.r_cloud_inserted /dcell:.3e} 
         L_drive / H = {Ldrive / self.H:.3e}
         Fr = {self.H / Ldrive * mach}
+        r_fall / H = {mach**2 / self.chi :.3e}
 
                      
         R_cl = {self.r_cloud_inserted:.3e} pc
         n_0 = {self.env_rho/self.mbar:.3e} pc
         chi = {self.chi}
-        t_cool = {get_t_cool_cgs(self.cloud_rho, 1e4, self.mbar) * ut.constants.s_to_Myrs :.3e} Myrs
-        t_cc = {self.chi * self.r_cloud_inserted * self.code_length_cgs / (self.g * self.t_grow_subsonic)* ut.constants.s_to_Myrs:.3e} Myrs
-        t_eddy = {t_eddy* ut.constants.s_to_Myrs:.3e} Myrs
 
-        surv_ratio = {get_t_cool_cgs(self.cloud_rho, 1e4, self.mbar) * ut.constants.s_to_Myrs/
-                      (5e-3 * (self.r_cloud_inserted/100)**(1/5) * (self.g / 1e-8)**(-4/5) * (self.chi/100)**(-12/5))
-                      }
+        vs = {vs/1e5:.3e} km/s
+        t_cool,mix = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)/Lambda_units*ut.constants.s_to_Myrs:.3e} Myr
+        t_r_eddy = {t_r_eddy*ut.constants.s_to_Myrs:.3e} Myr
+        t_cool,mix / t_eddy = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)/Lambda_units / t_r_eddy:.3e}
 
-        r_sonic = {self.r_sonic/ut.constants.pc_to_cm:.3e} pc
-        r_ss = {self.r_ss/ut.constants.pc_to_cm:.3e} pc
-        r_sonic / r_ss = {self.r_ratio:.3e} pc
-
-
-        fs tcc / tgrow = {self.t_surv_sub:.3e} 
 
         """)
 
@@ -383,6 +382,22 @@ class StratifiedBox:
             self.reader.set_('parthenon/mesh', f'x{axis}min', (xmin1 - abs(xmin1)/(xmax1 - xmin1)*y_adjustment))
             self.reader.save()
 
+    def _enforce_cartesian_grid_on_y(self):
+        nx1 = int(self.reader.get('parthenon/mesh', 'nx1'))
+        nx2 = int(self.reader.get('parthenon/mesh', 'nx2'))
+        xmin1, xmax1 = float(self.reader.get('parthenon/mesh', 'x1min')), float(self.reader.get('parthenon/mesh', 'x1max'))
+        xmin2, xmax2 = float(self.reader.get('parthenon/mesh', 'x2min')), float(self.reader.get('parthenon/mesh', 'x2max'))
+        # compute cell size from x1 and adjust x2 to match it
+        cell_size_x = (xmax1 - xmin1) / nx1
+        x_adjustment = cell_size_x * nx2 - (xmax2 - xmin2)
+        delta2 = (xmax2 - xmin2)
+        if delta2 == 0:
+            # avoid division by zero; nothing to adjust
+            return
+        self.reader.set_('parthenon/mesh', 'x2max', (xmax2 + abs(xmax2) / delta2 * x_adjustment))
+        self.reader.set_('parthenon/mesh', 'x2min', (xmin2 - abs(xmin2) / delta2 * x_adjustment))
+        self.reader.save()
+    
     def _set_t_corr(self):
         T0 = float(self.reader.get('problem/stratified_box', 'T_base'))
         mach = float(self.reader.get('problem/turbulence', 'Mach_drive'))
@@ -402,7 +417,7 @@ class StratifiedBox:
         t_eddy = L_drive/v_turb
         accel_rms  = v_turb**2 / (L_drive) 
 
-        t_injec = 20 * t_eddy
+        t_injec = 10 * t_eddy
         tlim = 50 * self.t_ff / code_time_cgs + t_injec
         dt_hst = 0.001*t_eddy 
         dt_hdf = 0.2*t_eddy 
@@ -418,6 +433,10 @@ class StratifiedBox:
         self.reader.set_('parthenon/output1', 'dt', dt_hst)
         self.reader.set_('parthenon/output2', 'dt', dt_hdf)
         self.reader.set_('parthenon/output3', 'dt', dt_rst)
+
+        loc = [0, self.y_centre, 0]
+        print("Updating cloud loc in input file to: ", loc)
+        self.reader.set_('problem/stratified_box', 'loc_cloud_inserted', loc)
         self.reader.save()
 
     
@@ -458,7 +477,19 @@ class StratifiedBox:
         
         print("Rescaled succesfully.")
         
-
+    def set_rin_res(self, resol_factor):
+        xmin2, xmax2 = float(self.reader.get('parthenon/mesh', 'x2min')), float(self.reader.get('parthenon/mesh', 'x2max'))
+        xmin1, xmax1 = float(self.reader.get('parthenon/mesh', 'x1min')), float(self.reader.get('parthenon/mesh', 'x1max'))
+        xmin3, xmax3 = float(self.reader.get('parthenon/mesh', 'x3min')), float(self.reader.get('parthenon/mesh', 'x3max'))
+        nx2 = int(self.reader.get('parthenon/mesh', 'nx2'))
+        R_internal_units = self.r_cloud_inserted
+        cell_size = (xmax2 - xmin2)/nx2
+        rescaled_size = R_internal_units / resol_factor / cell_size
+        
+        for i in [1,2,3]:
+            self.reader.change_aspect_xlim('parthenon/mesh', f'x{i}min', rescaled_size)
+            self.reader.change_aspect_xlim('parthenon/mesh', f'x{i}max', rescaled_size)
+        self._enforce_cartesian_grid()
 
 
 # --------------------
@@ -534,6 +565,8 @@ class TurbulentBox:
         self.reader.set_('parthenon/output2', 'dt', dt_hdf)
         self.reader.set_('parthenon/output3', 'dt', dt_rst)
         self.reader.save()
+
+        
         print(f"Driving correlation time set to {t_eddy:.3e} s")
     
     def _set_t_corr(self):
@@ -710,6 +743,7 @@ if __name__ == "__main__":
                 sim.enlarge_dim(increase_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 1, 
                             axs = [1,3]) 
             case "rescale":
-                sim.rescale_to_H()
+                sim.set_rin_res(resol_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 8)
+                #sim.rescale_to_H()
 
 
