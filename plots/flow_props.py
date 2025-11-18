@@ -53,13 +53,17 @@ if __name__ == "__main__":
         files = np.sort(glob.glob(os.path.join(run, 'out/parthenon.prim.*.phdf')))
 
         try:
-            timeseries, norm_mass, cgout, wgout, total = mass_evolution(run, gout=True)
+            times, norm_mass, cgout, wgout, total = mass_evolution(run, gout=True)
             tvs, vel = vel_evolution(run)
         except Exception as e:
             print(f"Skipping {run}: {e}")
             continue
 
         mask = ~np.isnan(norm_mass)
+        timeseries = times/sim.t_eddy - 10
+        idx_0 = np.argmin(np.abs(timeseries))
+        norm_mass = norm_mass- norm_mass[idx_0]
+
         timeseries = timeseries[mask]
         norm_mass = norm_mass[mask]
 
@@ -68,12 +72,12 @@ if __name__ == "__main__":
 
         # --- MASS EVOLUTION subplot ---
         ax_mass.plot(timeseries, norm_mass, label=f"{label} mass", alpha=0.8)
-        if np.sum(cgout) > 10 * len(cgout) * 1e-22:
-            ax_mass.plot(timeseries, cgout, alpha=0.5, label=f"{label} cgout")
-        if np.sum(wgout) > 10 * len(wgout) * 1e-22:
-            ax_mass.plot(timeseries, wgout, alpha=0.3, label=f"{label} wgout")
-        if (np.sum(cgout) > 10 * len(cgout) * 1e-22) and (np.sum(wgout) > 10 * len(wgout) * 1e-22):
-            ax_mass.plot(timeseries, total, color='black', linestyle='--', alpha=0.3, label="total")
+       # if np.sum(cgout) > 10 * len(cgout) * 1e-22:
+       #     ax_mass.plot(timeseries, cgout, alpha=0.5, label=f"{label} cgout")
+       # if np.sum(wgout) > 10 * len(wgout) * 1e-22:
+       #     ax_mass.plot(timeseries, wgout, alpha=0.3, label=f"{label} wgout")
+       # if (np.sum(cgout) > 10 * len(cgout) * 1e-22) and (np.sum(wgout) > 10 * len(wgout) * 1e-22):
+       #     ax_mass.plot(timeseries, total, color='black', linestyle='--', alpha=0.3, label="total")
 
         # --- VELOCITY EVOLUTION subplot ---
         ax_vel.plot(timeseries, vel * code_length_cgs / code_time_cgs /1e5, label=f"{label} velocity", alpha=0.8)
@@ -81,10 +85,12 @@ if __name__ == "__main__":
     # --- LABELS and formatting ---
     ax_mass.set_ylabel(r'$\log(m/m_0)$')
     ax_mass.set_ylim(bottom=-2)
+    ax_mass.set_xlim(left=0)
     ax_mass.legend()
 
     ax_vel.set_xlabel(r't [code units]')
-    ax_vel.set_ylabel(r'$infall_speed (km/s)$')
+    ax_vel.set_ylabel(r'infall speed $(km/s)$')
+    ax_vel.set_xlim(left=0)
     ax_vel.legend()
 
     plt.tight_layout()

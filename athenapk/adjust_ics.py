@@ -348,6 +348,8 @@ class StratifiedBox:
         L_drive / H = {Ldrive / self.H:.3e}
         Fr = {self.H / Ldrive * mach}
         r_fall / H = {mach**2 / self.chi :.3e}
+        r_cl = {self.r_cloud_inserted:.3e} pc
+        r_fall^2 / l_react = {((mach**2 / self.chi * self.H)**2 / vs / get_t_cool_cgs(self.cloud_rho, self.T_cloud, self.mbar))/ut.constants.pc_to_cm:.3e} pc
 
                      
         R_cl = {self.r_cloud_inserted:.3e} pc
@@ -355,9 +357,13 @@ class StratifiedBox:
         chi = {self.chi}
 
         vs = {vs/1e5:.3e} km/s
-        t_cool,mix = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)/Lambda_units*ut.constants.s_to_Myrs:.3e} Myr
+        t_cool,mix = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)*Lambda_units*ut.constants.s_to_Myrs:.3e} Myr
         t_r_eddy = {t_r_eddy*ut.constants.s_to_Myrs:.3e} Myr
-        t_cool,mix / t_eddy = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)/Lambda_units / t_r_eddy:.3e}
+        t_cool,mix / t_eddy = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)*Lambda_units / t_r_eddy:.3e}
+        t_grow = {self.t_grow_subsonic*ut.constants.s_to_Myrs:.3e} Myr
+        vs / g t_grow = {vs / (self.g * self.t_grow_subsonic):.3e} 
+        vs / g t_grow = {vs / (self.g * self.t_grow_supersonic):.3e} 
+        vs / g t_grow = {vs / (self.g * self.chi * (self.r_cloud_inserted * ut.constants.pc_to_cm / vs * get_t_cool_cgs(self.cloud_rho, self.T_cloud, self.mbar)*Lambda_units)**0.5):.3e} 
 
 
         """)
@@ -414,19 +420,19 @@ class StratifiedBox:
         #p_floor = p0*0.01
 
         L_drive = L_box/k_peak
-        t_eddy = L_drive/v_turb
+        self.t_eddy = L_drive/v_turb
         accel_rms  = v_turb**2 / (L_drive) 
 
-        t_injec = 10 * t_eddy
+        t_injec = 10 * self.t_eddy
         tlim = 50 * self.t_ff / code_time_cgs + t_injec
-        dt_hst = 0.001*t_eddy 
-        dt_hdf = 0.2*t_eddy 
-        dt_rst = 2*t_eddy 
+        dt_hst = 0.001*self.t_eddy 
+        dt_hdf = 0.2*self.t_eddy 
+        dt_rst = 2*self.t_eddy 
         
         self.reader.set_('problem/stratified_box', 'rescale_code_time_to_tff', 'false')
         self.reader.set_('problem/stratified_box', 'inject_once_at_time', t_injec)
         self.reader.set_('cooling', 'start_time', t_injec)
-        self.reader.set_('problem/turbulence', 'corr_time', t_eddy)
+        self.reader.set_('problem/turbulence', 'corr_time', self.t_eddy)
         #self.reader.set_('hydro', 'pfloor', p_floor)
         self.reader.set_('problem/turbulence', 'accel_rms', accel_rms)
         self.reader.set_('parthenon/time', 'tlim', tlim)
