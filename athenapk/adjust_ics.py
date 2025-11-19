@@ -4,6 +4,7 @@ import numpy as np
 from scipy.optimize import minimize_scalar
 import utils as ut
 import math
+import matplotlib.pyplot as plt
 
 
 
@@ -349,7 +350,10 @@ class StratifiedBox:
         Fr = {self.H / Ldrive * mach}
         r_fall / H = {mach**2 / self.chi :.3e}
         r_cl = {self.r_cloud_inserted:.3e} pc
-        r_fall^2 / l_react = {((mach**2 / self.chi * self.H)**2 / vs / get_t_cool_cgs(self.cloud_rho, self.T_cloud, self.mbar))/ut.constants.pc_to_cm:.3e} pc
+        r_fall^2 / l_react = {((mach**2 / self.chi * self.H)**2 / vs / get_t_cool_cgs(self.cloud_rho, self.T_cloud, self.mbar)*Lambda_units)/ut.constants.pc_to_cm:.3e} pc
+        lcool,min = {(get_c_s(self.T_cloud) * get_t_cool_min(1e-26, self.T_cloud, self.mbar)/Lambda_units)/ut.constants.pc_to_cm:.3e} pc
+        r_fall^2 / vs = { vs/1e5:.3e} Myrs
+
 
                      
         R_cl = {self.r_cloud_inserted:.3e} pc
@@ -357,13 +361,14 @@ class StratifiedBox:
         chi = {self.chi}
 
         vs = {vs/1e5:.3e} km/s
-        t_cool,mix = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)*Lambda_units*ut.constants.s_to_Myrs:.3e} Myr
+        t_cool,mix = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)/Lambda_units*ut.constants.s_to_Myrs:.3e} Myr
+        t_cool = {get_t_cool_cgs(self.cloud_rho, self.T_cloud, self.mbar)/Lambda_units*ut.constants.s_to_Myrs:.3e} Myr
         t_r_eddy = {t_r_eddy*ut.constants.s_to_Myrs:.3e} Myr
-        t_cool,mix / t_eddy = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)*Lambda_units / t_r_eddy:.3e}
+        t_cool,mix / t_eddy = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)/Lambda_units / t_r_eddy:.3e}
         t_grow = {self.t_grow_subsonic*ut.constants.s_to_Myrs:.3e} Myr
         vs / g t_grow = {vs / (self.g * self.t_grow_subsonic):.3e} 
         vs / g t_grow = {vs / (self.g * self.t_grow_supersonic):.3e} 
-        vs / g t_grow = {vs / (self.g * self.chi * (self.r_cloud_inserted * ut.constants.pc_to_cm / vs * get_t_cool_cgs(self.cloud_rho, self.T_cloud, self.mbar)*Lambda_units)**0.5):.3e} 
+        vs / g t_grow = {vs / (self.g * self.chi * (self.r_cloud_inserted * ut.constants.pc_to_cm / vs * get_t_cool_cgs(self.cloud_rho, self.T_cloud, self.mbar)/Lambda_units)**0.5):.3e} 
 
 
         """)
@@ -665,7 +670,50 @@ def get_t_cool_min(rho, T, mbar, Tmin=1e4, Tmax=1e6):
     else:
         raise RuntimeError("Minimization did not converge.")
     
+def plot_l_cool_min_vs_pressure(pressures, mbar, Tmin=1e4, Tmax=1e6, show=True):
+    """
+    For each pressure (in cgs: dyn/cm^2) find the temperature T in [Tmin, Tmax]
+    that minimizes the quantity used in get_t_cool_min and plot t_cool_min(P).
+    Returns (pressures_array, tmin_array, T_at_min_array).
+    """
 
+    pressures = np.atleast_1d(pressures).astype(float)
+    tmins = np.empty_like(pressures)
+    Tmins = np.empty_like(pressures)
+
+    def cooling_time_at_fixed_pressure(T, P):
+        # same functional form used in your selection
+        log_lambda = np.interp(np.log10(T), cooling_table_logT_cgs, cooling_table_logLambda_cgs)
+        Lambda = 10.0 ** log_lambda
+        return (ut.constants.kb ** 2 * T ** 2) / (abs(P) * Lambda)
+
+    for i, P in enumerate(pressures):
+        res = minimize_scalar(lambda T: cooling_time_at_fixed_pressure(T, P),
+                                bounds=(Tmin, Tmax), method='bounded')
+        if not res.success:
+            raise RuntimeError(f"Minimization failed for pressure={P}")
+        Tmins[i] = res.x
+        tmins[i] = res.fun
+
+    # Plot (log-log is usually informative)
+    if show:
+        fig, ax = plt.subplots()
+        ax.loglog(pressures, get_c_s(Tmins) * tmins / ut.constants.pc_to_cm, marker='o', lw=1)
+        ax.set_xlabel("Pressure (dyn cm$^{-2}$)")
+        ax.set_ylabel("l_cool,min (pc)")
+        ax.grid(which='both', ls=':')
+        # optional twin axis to show T_at_min
+        ax2 = ax.twinx()
+        ax2.semilogx(pressures, Tmins, color='tab:orange', marker='x', lw=0.5)
+        ax2.set_ylabel("T at minimum (K)", color='tab:orange')
+        for tl in ax2.get_yticklabels():
+            tl.set_color('tab:orange')
+        plt.axvline(1e-27 * ut.constants.kb * 1e6 / 0.6 /mbar, color='gray', ls='--', lw=1)
+        plt.tight_layout()
+        plt.savefig("l_cool_min_vs_pressure.png", dpi=300)
+
+    return pressures, tmins, Tmins
+    
 def get_l_shatter(P):
     def l_shatter_func(T):
         return get_c_s(T) * get_t_cool(P / (ut.constants.kb * T), T)
@@ -751,5 +799,6 @@ if __name__ == "__main__":
             case "rescale":
                 sim.set_rin_res(resol_factor=float(sys.argv[2]) if len(sys.argv) == 3 else 8)
                 #sim.rescale_to_H()
-
+        #pressures = np.logspace(-20, -30, 50) * ut.constants.kb  * 1e6 / 0.6 / ut.constants.uam
+        #plot_l_cool_min_vs_pressure(pressures, mbar)
 
