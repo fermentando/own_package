@@ -199,7 +199,7 @@ def get_working_dirs():
         run_paths = np.array([
             os.path.join(runDir, folder) 
             for folder in os.listdir(runDir) 
-            if os.path.isdir(os.path.join(runDir, folder)) and 'restrat.in' in os.listdir(os.path.join(runDir, folder)) 
+            if os.path.isdir(os.path.join(runDir, folder)) and 'strat.in' in os.listdir(os.path.join(runDir, folder)) 
         ])
         parts = runDir.split('/')
         saveFile = f"{parts[-2]}/{parts[-1]}"

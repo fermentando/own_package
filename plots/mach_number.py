@@ -1,6 +1,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from adjust_ics import *
+from cooling import get_c_s
+from stratified_box import StratifiedBox
 import os
 
 
@@ -32,6 +34,7 @@ v_turb = cs * mach / velocity_cgs
 
 L_drive = L_box/k_peak
 t_eddy = L_drive/v_turb 
+print("This is last time / t_eddy:", t[-1]/t_eddy)
 
 plt.plot(t/t_eddy, output_mach/V_box)
 plt.xlabel("Time")  
