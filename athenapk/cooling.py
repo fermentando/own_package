@@ -17,9 +17,11 @@ cooling_table_logLambda_cgs = None
 # Global physics constants (set during module initialization)
 gamma = None
 mbar = None
+mu = None
+m_H = None
 
 
-def initialize_cooling_constants(gamma_val, mbar_val):
+def initialize_cooling_constants(gamma_val, mbar_val, mu_val, m_H_val):
     """
     Initialize global constants used in cooling calculations.
     
@@ -30,9 +32,11 @@ def initialize_cooling_constants(gamma_val, mbar_val):
     mbar_val : float
         Mean molecular mass in grams
     """
-    global gamma, mbar
+    global gamma, mbar, mu, m_H
     gamma = gamma_val
     mbar = mbar_val
+    mu = mu_val
+    m_H = m_H_val
 
 
 def load_cooling_table(cooling_table_path):
@@ -74,7 +78,7 @@ def get_c_s(T):
     float
         Sound speed in cm/s
     """
-    return np.sqrt(gamma * ut.constants.kb * T / mbar)
+    return np.sqrt(5/3. * ut.constants.kb * T / mbar)
 
 
 def get_t_cool_cgs(rho, T, mbar_val=None, gamma = 5/3.):
@@ -101,11 +105,11 @@ def get_t_cool_cgs(rho, T, mbar_val=None, gamma = 5/3.):
     e = ut.constants.kb * T / (gamma - 1) / mbar_val
     log_lambda = np.interp(np.log10(T), cooling_table_logT_cgs, cooling_table_logLambda_cgs)
     Lambda = 10**log_lambda
-    n_H = rho / mbar_val
+    n_H = rho / (m_H * ut.constants.mh)
     return rho * e / (n_H**2 * Lambda)
 
 
-def get_t_cool_n(T, n):
+def get_t_cool_n(T, n, mbar=None):
     """
     Calculate cooling time given number density.
     
@@ -122,12 +126,13 @@ def get_t_cool_n(T, n):
         Cooling time in seconds
     """
     gamma = 5/3.
-    mbar = 0.6 * C.m_p.to('g').value
+    if mbar is None:
+        mbar = 0.7 * C.m_p.to('g').value
     rho = n * mbar
     e = C.k_B.cgs.value * T / (gamma - 1) / mbar  # erg / g
     log_lambda = np.interp(np.log10(T), cooling_table_logT_cgs, cooling_table_logLambda_cgs)
     Lambda = 10**log_lambda
-    n_H = rho / mbar
+    n_H = rho / (m_H * ut.constants.mh)
     return rho * e / (n_H**2 * Lambda)
 
 
@@ -137,9 +142,9 @@ def get_t_cool_min(rho, T, mbar_val, Tmin=1e4, Tmax=1e6):
     
     Parameters
     ----------
-    rho : float
+    rho : float or array-like
         Density in g/cm^3
-    T : float
+    T : float or array-like
         Reference temperature in Kelvin (used to compute pressure)
     mbar_val : float
         Mean molecular mass in grams
@@ -147,31 +152,51 @@ def get_t_cool_min(rho, T, mbar_val, Tmin=1e4, Tmax=1e6):
         Minimum temperature to search (default 1e4 K)
     Tmax : float, optional
         Maximum temperature to search (default 1e6 K)
-        
+    
     Returns
     -------
-    float
+    float or ndarray
         Minimum cooling time in seconds
     """
-    pressure_value = (rho * ut.constants.kb * T) / mbar_val 
-
-    def cooling_function(T, pressure_value):
-        return ut.constants.kb**2 * T**2 / abs(pressure_value * 10**np.interp(np.log10(T), cooling_table_logT_cgs, cooling_table_logLambda_cgs))
+    # Convert inputs to arrays
+    rho = np.atleast_1d(rho)
+    T = np.atleast_1d(T)
     
-    result = minimize_scalar(
-        cooling_function, 
-        bounds=(Tmin, Tmax), 
-        args=(pressure_value), 
-        method='bounded'
-    )
-    if result.success:
-        print("This is the temperature at minimum:", result.x)
-        return cooling_function(result.x, pressure_value)
-    else:
-        raise RuntimeError("Minimization did not converge.")
+    # Check if inputs are scalars
+    scalar_input = (rho.size == 1 and T.size == 1)
+    
+    # Broadcast to common shape
+    rho, T = np.broadcast_arrays(rho, T)
+    
+    # Initialize output array
+    results = np.zeros(rho.shape)
+    
+    def cooling_function(T_val, pressure_value):
+        return (ut.constants.kb**2 * T_val**2 / 
+                abs(pressure_value * 10**np.interp(np.log10(T_val), 
+                                                     cooling_table_logT_cgs, 
+                                                     cooling_table_logLambda_cgs)))
+    
+    # Loop over all elements
+    for idx in np.ndindex(rho.shape):
+        pressure_value = (rho[idx] * ut.constants.kb * T[idx]) / mbar_val
+        
+        result = minimize_scalar(
+            cooling_function, 
+            bounds=(Tmin, Tmax), 
+            args=(pressure_value,), 
+            method='bounded'
+        )
+        
+        if result.success:
+            results[idx] = cooling_function(result.x, pressure_value)
+        else:
+            raise RuntimeError(f"Minimization did not converge at index {idx}")
+    
+    # Return scalar if input was scalar
+    return results.item() if scalar_input else results
 
-
-def get_l_shatter(P):
+def get_l_shatter(P,mbar=None):
     """
     Calculate the shattering length scale.
     
@@ -186,7 +211,7 @@ def get_l_shatter(P):
         (shattering_length, temperature_at_minimum)
     """
     def l_shatter_func(T):
-        return get_c_s(T) * get_t_cool_n(T, P / (ut.constants.kb * T))
+        return get_c_s(T) * get_t_cool_n(T, P / (ut.constants.kb * T), mbar)
 
     res = minimize_scalar(l_shatter_func, bounds=(1e4, 1e6), method='bounded')
     return res.fun, res.x

@@ -78,23 +78,168 @@ def gen_adios(MeshSize, MeshBlockSize, fields, filename):
     ICs_correct = reassemble_blocks(ICs)
     return ICs_correct.reshape(len(fields), nx3, nx2, nx1)
 
-
-def read_adios(filename):
+def gen_adios_streaming(MeshSize, MeshBlockSize, fields, filename):
     """
-    Read an ADIOS2 .bp file and return the data as a numpy array
-    with shape (len(fields), nx3, nx2, nx1).
-    """
-    with adios2.open(filename, "r") as f:
-        for step in f:
-            # Get all available variable names (optional)
-            vars_info = f.available_variables()
-            print("Variables available:", list(vars_info.keys()))
-            ICs_np = step.read(filename.split('.bp')[0])
-            ICs_np = np.array(ICs_np)
+    Write mesh-blocked field data to ADIOS without large intermediate arrays.
 
-            print("Shape:", ICs_np.shape)
-            print("Data sample:", ICs_np.ravel()[:5])
-    return ICs_np
+    Final ADIOS variable shape:
+        (nz_blocks, ny_blocks, nx_blocks,
+         n_fields, mbl3, mbl2, mbl1)
+    """
+
+    # Unpack sizes
+    mbl3, mbl2, mbl1 = MeshBlockSize
+    nx3, nx2, nx1 = MeshSize
+
+    nz_blocks = nx3 // mbl3
+    ny_blocks = nx2 // mbl2
+    nx_blocks = nx1 // mbl1
+    n_fields = len(fields)
+
+    # Sanity checks
+    assert nx3 % mbl3 == 0
+    assert nx2 % mbl2 == 0
+    assert nx1 % mbl1 == 0
+
+    # Reshape fields into block views (no copies if contiguous)
+    meshblock_fields = [
+        field.reshape(nx_blocks, mbl3,
+                      ny_blocks, mbl2,
+                      nz_blocks, mbl1)
+        for field in fields
+    ]
+
+    saveDir = os.path.join(localDir, filename)
+    varname = filename.split(".bp")[0]
+
+    # Global shape of the ADIOS variable
+    global_shape = (
+        nz_blocks,
+        ny_blocks,
+        nx_blocks,
+        n_fields,
+        mbl3,
+        mbl2,
+        mbl1
+    )
+
+    with Stream(saveDir, "w") as s:
+        for _ in s.steps(1):
+
+            for bx in range(nx_blocks):
+                for by in range(ny_blocks):
+                    for bz in range(nz_blocks):
+
+                        # Build one block: shape (n_fields, mbl3, mbl2, mbl1)
+                        block = np.empty(
+                            (n_fields, mbl3, mbl2, mbl1),
+                            dtype=fields[0].dtype
+                        )
+
+                        for f in range(n_fields):
+                            block[f] = meshblock_fields[f][
+                                bx, :, by, :, bz, :
+                            ]
+
+                        # ADIOS expects full dimensionality
+                        block = block[np.newaxis, np.newaxis, np.newaxis, ...]
+
+                        start = (
+                            bz,
+                            by,
+                            bx,
+                            0,
+                            0,
+                            0,
+                            0
+                        )
+
+                        count = (
+                            1,
+                            1,
+                            1,
+                            n_fields,
+                            mbl3,
+                            mbl2,
+                            mbl1
+                        )
+
+                        s.write(
+                            varname,
+                            block,
+                            shape=global_shape,
+                            start=start,
+                            count=count
+                        )
+
+    # Optional: reconstruct original field layout for return
+    # This allocates full memory again – remove if not needed
+    reconstructed = np.empty(
+        (n_fields, nx3, nx2, nx1),
+        dtype=fields[0].dtype
+    )
+
+    for f in range(n_fields):
+        reconstructed[f] = fields[f]
+
+    return reconstructed
+
+def gen_adios_chunked(MeshSize, MeshBlockSize, fields, filename):
+    """
+    Memory-efficient: write as single variable using ADIOS2 block writes
+    """
+    mbl3, mbl2, mbl1 = MeshBlockSize
+    nx3, nx2, nx1 = MeshSize
+    nz_blocks, ny_blocks, nx_blocks = (nx3 // mbl3, nx2 // mbl2, nx1 // mbl1)
+    n_fields = len(fields)
+    
+    # Global shape
+    global_shape = (nz_blocks, ny_blocks, nx_blocks, n_fields, mbl3, mbl2, mbl1)
+    
+    saveDir = os.path.join(localDir, filename)
+    var_name = filename.split('.bp')[0]
+    
+    # Use lower-level API for block writing
+    adios = adios2.Adios()
+    io = adios.declare_io("writer")
+    
+    # Define variable with global shape
+    var = io.define_variable(var_name, np.array([]), global_shape, [0]*7, global_shape)
+    
+    # Mode is an integer: 2 = Write
+    from adios2.bindings import Mode
+    engine = io.open(saveDir, Mode.Write)
+    
+    # Reshape fields
+    meshblock_fields = [f.reshape(nx_blocks, mbl1, ny_blocks, mbl2, nz_blocks, mbl3) 
+                        for f in fields]
+    
+    # Write blocks
+    x_indices, y_indices, z_indices = np.indices((nx_blocks, ny_blocks, nz_blocks))
+    LogicalLocations = np.vstack((x_indices.ravel(), y_indices.ravel(), z_indices.ravel())).T
+    
+    engine.begin_step()
+    
+    for ix, iy, iz in LogicalLocations:
+        block_data = np.zeros((n_fields, mbl3, mbl2, mbl1), dtype=np.float32)
+        for f in range(n_fields):
+            block_data[f] = meshblock_fields[f][ix, :, iy, :, iz, :]
+        
+        # Set selection for this block
+        start = [iz, iy, ix, 0, 0, 0, 0]
+        count = [1, 1, 1, n_fields, mbl3, mbl2, mbl1]
+        var.set_selection([start, count])
+        
+        engine.put(var, block_data)
+    
+    engine.end_step()
+    engine.close()
+    
+    print(f"ICs written to {saveDir} successfully as 7D variable")
+    print(f"Shape: {global_shape}")
+    return None
+
+
 
 # -------- Parameter Reading and Initial Conditions Output -------- #
 
@@ -130,6 +275,7 @@ def compute_wind_velocity(params):
 
 
 def generate_ICs(params, rho_field, filename='ICs.bp', cloud_props=None):
+    print("Generating ICs...")
     nx1, nx2, nx3 = int(params['nx1']), int(params['nx2']), int(params['nx3'])
     mbl1, mbl2, mbl3 = (int(params['reader'].get('parthenon/meshblock', f'nx{i}')) for i in range(1,4))
     mbar_over_kb = cloud_props.mbar/ut.constants.kb 
@@ -178,12 +324,17 @@ def generate_ICs(params, rho_field, filename='ICs.bp', cloud_props=None):
     MeshBlockSize = (mbl3, mbl2, mbl1)
     MeshSize = (nx3, nx2, nx1)
 
+    print('Begin adios generation')
     if filename.split(".")[-1] == "bin":
         ICs = gen_bin(fields, filename)
     elif filename.split(".")[-1] == "bp":
-        ICs = gen_adios(MeshSize, MeshBlockSize, fields, filename)
+        ICs = gen_adios_streaming(MeshSize, MeshBlockSize, fields, filename)
+        #ICs = gen_adios(MeshSize, MeshBlockSize, fields, filename)
+
 
     return ICs
+
+
 
 # -------- Single Cloud Generation -------- #
 def generate_sphere(filename_input, filename):
@@ -325,13 +476,33 @@ def gen_magnetic_field(params, pressure, rho_field):
     return Bx, By, Bz
 # -------- Fractal ISM and Percolation Generation -------- #
 
-def simulate_percolation(dimensions, p, sigma):
+def oldsimulate_percolation(dimensions, p, sigma):
     """ Simulate percolation with Gaussian smoothing. """
+    print(f"Dimensions: {dimensions}, estimated memory per array: {np.prod(dimensions) * 8 / 1e9:.2f} GB")
     field = np.random.rand(*dimensions)
     smoothed_field = gaussian_filter(field, sigma=sigma) if not isinstance(sigma, tuple) else np.mean(
         [gaussian_filter(field, s) for s in np.linspace(*sigma, 5)], axis=0)
     threshold = np.percentile(smoothed_field, 100 * (1 - p))
+    print("Percolation field has been simulated.")
     return smoothed_field > threshold
+
+def simulate_percolation(dimensions, p, sigma, chunk_size=4000):
+    """ Simulate percolation with chunking to reduce memory. """
+    nx1, nx2, nx3 = dimensions
+    result = np.zeros(dimensions, dtype=bool)
+    
+    for i in range(0, nx2, chunk_size):
+        end = min(i + chunk_size, nx2)
+        chunk_dims = (nx1, end - i, nx3)
+        
+        field = np.random.rand(*chunk_dims)
+        smoothed_field = gaussian_filter(field, sigma=sigma) if not isinstance(sigma, tuple) else np.mean(
+            [gaussian_filter(field, s) for s in np.linspace(*sigma, 5)], axis=0)
+        threshold = np.percentile(smoothed_field, 100 * (1 - p))
+        result[:, i:end, :] = smoothed_field > threshold
+        
+    print("Percolation field has been simulated.")
+    return result
 
 def compute_p_values(sigmas, p_init):
     """ Compute p values for different sigmas. """

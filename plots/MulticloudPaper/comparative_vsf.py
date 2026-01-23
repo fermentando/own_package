@@ -4,8 +4,8 @@ import os
 import seaborn as sns
 import matplotlib.colors as mcolors
 from matplotlib.cm import ScalarMappable
-from adjust_ics import SingleCloudCC
-from adjust_ics import get_c_s
+from single_cloud import SingleCloudCC
+from cooling import get_c_s
 
 cm1 = sns.light_palette("seagreen", as_cmap=True)
 cm2 = sns.color_palette("light:b", as_cmap=True)
@@ -18,11 +18,15 @@ sm3 = ScalarMappable(cmap=cm3, norm=norm)
 
 sm = [sm1, sm2, sm3]
 
+labels = [r'$(1, 10^{-1}, 30)$',
+          r'$(1, 10^{-2}, 300)$',
+          r'$(0.1, 10^{-1}, 300)$']
+
 def plot_vsf_subplots(npz_paths, outdir, stand_l=1.0, min_pairs=10):
     
     
     plt.style.use('custom_plot')
-    fig, axs = plt.subplots(1, 3, figsize=(12, 4), sharey=True)
+    fig, axs = plt.subplots(1, 3, figsize=(12, 4.5), sharey=True)
     
 
     for subplot_idx in range(3):
@@ -32,7 +36,7 @@ def plot_vsf_subplots(npz_paths, outdir, stand_l=1.0, min_pairs=10):
             print(run_idx)
             
             path = npz_paths[run_idx]
-            input_file_path = '/viper/ptmp/ferhi/' + path.split("3d_vsf_")[0].split("function")[-1]
+            input_file_path = '/viper/ptmp/ferhi/LEGACY/' + path.split("3d_vsf_")[0].split("function")[-1]
             sim = SingleCloudCC(os.path.join(input_file_path, 'ism.in'), dir=input_file_path)
             depth = float(sim.reader.get('problem/wtopenrun', 'depth'))
             l_turbulent =  depth 
@@ -53,10 +57,11 @@ def plot_vsf_subplots(npz_paths, outdir, stand_l=1.0, min_pairs=10):
             x_vals = 10 ** log_centers / stand_l * correction_centers
             lower_power = 10 ** np.floor(np.log10(min(x_vals)))
 
-            ax.plot(x_vals, np.sqrt(3/2)*vsf/cs, color = sm[subplot_idx].to_rgba(i+1))
+            if i ==4: ax.plot(x_vals, np.sqrt(3/2)*vsf/cs, color = sm[subplot_idx].to_rgba(i+1), label=labels[subplot_idx])
+            else: ax.plot(x_vals, np.sqrt(3/2)*vsf/cs, color = sm[subplot_idx].to_rgba(i+1))
             ax.set_xlim(left = lower_power)
-            if i == 0: ax.vlines(x = l_turbulent, ymin = 1e-2, ymax = 1e3, color='k', linestyle='--', linewidth=1, label=r'$L_\mathrm{ISM}$', alpha= 0.4)
-            if run_idx == 0: ax.legend(loc='upper left', fontsize = 12)
+            if i==4:ax.vlines(x = l_turbulent, ymin = 1e-2, ymax = 1e3, color='k', linestyle='--', linewidth=1, label=r'$L_\mathrm{ISM}$', alpha= 0.4)
+            ax.legend(loc='upper left', fontsize = 12)
 
         # Reference slope line ~ l^{1/3}
         x_ref = x_vals[~np.isnan(vsf)]
@@ -78,6 +83,7 @@ def plot_vsf_subplots(npz_paths, outdir, stand_l=1.0, min_pairs=10):
         ax.set_xlabel(r'$l_{3D} = \left| r_i - r_j \right| [r_{cl}]$', labelpad = 10, fontsize = 16)
         if subplot_idx == 0:
             ax.set_ylabel(r'$\bar{S}_\mathrm{1} = \langle | v(r + \ell) - v(r) | \rangle / c_\mathrm{s,cold}$', labelpad = 8, fontsize = 16)
+        if subplot_idx < 10:
             
             x0, x1 = 2*lower_power, 4*lower_power  # Choose x-range for reference line
             y0 = 1.5e-1            # Starting y value
@@ -97,18 +103,35 @@ def plot_vsf_subplots(npz_paths, outdir, stand_l=1.0, min_pairs=10):
         ax.set_ylim(bottom=1e-1, top=10)
 
     plt.tight_layout()
+    # reserve space for the suptitle (tight_layout was already called)
+    fig.subplots_adjust(top=0.88, right=0.88)
+    fig.suptitle(r'$(r_\mathrm{cl} / r_\mathrm{crit}, f_\mathrm{v}, L_\mathrm{ISM}/r_\mathrm{cl}$)', x=0.48, y=0.98, fontsize=18)
+
+    # Greyscale colorbar for t/tsh going from 0 to 1, placed in its own axis to avoid overlap
+    cmap_grey = mcolors.LinearSegmentedColormap.from_list('grey_map', ['lightgrey', 'black'])
+    cb_norm = mcolors.Normalize(vmin=0.0, vmax=1.0)
+    cb_sm = ScalarMappable(cmap=cmap_grey, norm=cb_norm)
+    cb_sm.set_array(np.linspace(0.0, 1.0, 256))
+
+    # create a dedicated axis on the right side of the figure for the colorbar
+    cax = fig.add_axes([0.91, 0.16, 0.015, 0.72])  # [left, bottom, width, height] in figure coords
+    cbar = fig.colorbar(cb_sm, cax=cax, orientation='vertical')
+    cbar.set_label(r'$t/t_\mathrm{sh}$', fontsize=14)
+    cbar.set_ticks([0.0, 0.25, 0.5, 0.75, 1.0])
+    cbar.ax.tick_params(labelsize=12)
+
     os.makedirs(outdir, exist_ok=True)
-    outfile = os.path.join(outdir, "vsf_3x3_subplots.png")
+    outfile = os.path.join(outdir, "vsf_3x3_subplots.pdf")
     print(f"Saving to {outfile}")
-    plt.savefig(outfile, dpi=300)
+    plt.savefig(outfile, bbox_inches='tight', dpi=300)
     plt.close()
 
 
 if __name__ == "__main__":
 
-    u1 = '/u/ferhi/Figures/velocity_structure_function/fvLism/kc/fv01_shorter/'
-    u2 = '/u/ferhi/Figures/velocity_structure_function/fvLism/01kc/fv01_30r/'
-    u3 = '/u/ferhi/Figures/velocity_structure_function/fvLism/01kc/fv02/'
+    u1 = '/u/ferhi/Figures/MulticloudPaper/velocity_structure_function/fvLism/kc/fv01_shorter/'
+    u2 = '/u/ferhi/Figures/MulticloudPaper/velocity_structure_function/fvLism/01kc/fv01_30r/'
+    u3 = '/u/ferhi/Figures/MulticloudPaper/velocity_structure_function/fvLism/01kc/fv02/'
 
     
     vsf_files = [

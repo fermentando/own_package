@@ -39,6 +39,10 @@ def main():
     elif os.path.isfile(os.path.join(localDir, "strat.in")):
         sim = StratifiedBox(os.path.join(localDir, 'strat.in'), dir=localDir)
         _handle_stratified_command(sim)
+
+    elif os.path.isfile(os.path.join(localDir, "turbulence.in")):
+        sim = TurbulentBox(os.path.join(localDir, 'turbulence.in'), dir=localDir)
+        _handle_turbulence_command(sim)
     
     else:
         print("Error: Neither 'ism.in' nor 'strat.in' found in current directory.")
@@ -102,6 +106,35 @@ def _handle_stratified_command(sim):
         sim.compute_restart_cooling_time()
     elif command == "set_y":
         sim.set_y(float(sys.argv[2])*1000)
+    elif command == "radius":
+        sim.radius(float(sys.argv[2]))
+    else:
+        print(f"Error: Unknown command '{command}'")
+        print("Available commands: check, enlarge_y, enlarge_x, rescale")
+        sys.exit(1)
+
+def _handle_turbulence_command(sim):
+    """Handle commands for stratified box simulations."""
+    if len(sys.argv) < 2:
+        print("Error: No command provided. See help documentation.")
+        sys.exit(1)
+    
+    command = str.lower(sys.argv[1])
+    
+    if command == "check":
+        sim._enforce_cartesian_grid()
+        sim.state_ICs()
+    elif command == "enlarge_y":
+        factor = float(sys.argv[2]) if len(sys.argv) == 3 else 1
+        sim.enlarge_dim(increase_factor=factor, axs=[2])
+    elif command == "enlarge_x":
+        factor = float(sys.argv[2]) if len(sys.argv) == 3 else 1
+        sim.enlarge_dim(increase_factor=factor, axs=[1, 3])
+    elif command == "rescale":
+        factor = float(sys.argv[2]) if len(sys.argv) == 3 else 8
+        sim.set_rin_res(resol_factor=factor)
+    elif command == "cooling":
+        sim.compute_restart_cooling_time()
     else:
         print(f"Error: Unknown command '{command}'")
         print("Available commands: check, enlarge_y, enlarge_x, rescale")

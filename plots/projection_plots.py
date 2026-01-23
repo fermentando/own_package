@@ -185,9 +185,11 @@ class ImageConverter:
             else:
                 field = mode
                 files = glob.glob(os.path.join(self.saveDir, f"multiplot_{field}_*.png"))
-                ffmpeg.input(os.path.join(self.saveDir, f"multiplot_{field}_%03d.png"), framerate=len(files)//30 if len(files)//30 > 2 else 2).output(
-                    os.path.join(self.saveDir, f"multiplot_{field}.mp4")
-                ).run(overwrite_output=True)#, capture_stdout=True, capture_stderr=True)
+                ffmpeg.input(
+                        os.path.join(self.saveDir, f"multiplot_{field}_*.png"),
+                        pattern_type='glob',
+                        framerate=max(len(files)//30, 2)
+                    ).output(os.path.join(self.saveDir, f"multiplot_{field}.mp4")).run(overwrite_output=True)
 
     def process_hist(self, filename):
         """Processes a single file for histogram"""

@@ -1,20 +1,17 @@
 import os
 import yt 
 import glob
-import sys
 import numpy as np
 from utils import *
 from adjust_ics import *
+from single_cloud import SingleCloudCC
 import matplotlib.pyplot as plt
 from multiprocessing import Pool, cpu_count
-import argparse
-from read_hdf5 import read_hdf5
 import seaborn as sns
 from matplotlib.cm import ScalarMappable
 from matplotlib.lines import Line2D
 import matplotlib.colors as mcolors
 import matplotlib.gridspec as gridspec
-import h5py
 
 
 # Set up a colormap using seaborn
@@ -79,22 +76,24 @@ if __name__ == "__main__":
     plot_yt = False
     plot_hst = True
 
-    fig = plt.figure(figsize=(8, 9))
-    gs = gridspec.GridSpec(2, 3, width_ratios=[1, 1, 0.08], wspace=0.1, hspace=0.1, figure=fig)
-    ax = np.empty((2, 2), dtype=object)
+    fig = plt.figure(figsize=(12, 9))
+    gs = gridspec.GridSpec(2, 5, width_ratios=[1, 1, 1, 1, 0.08], wspace=0.1, hspace=0.1, figure=fig)
+    ax = np.empty((2, 4), dtype=object)
     ax[0, 0] = fig.add_subplot(gs[0, 0])
     ax[0, 1] = fig.add_subplot(gs[0, 1])
+    ax[0, 2] = fig.add_subplot(gs[0, 2])
+    ax[0, 3] = fig.add_subplot(gs[0, 3])
     ax[1, 0] = fig.add_subplot(gs[1, 0], sharex=ax[0, 0])
     ax[1, 1] = fig.add_subplot(gs[1, 1], sharex=ax[0, 1])
+    ax[1, 2] = fig.add_subplot(gs[1, 2], sharex=ax[0, 2])
+    ax[1, 3] = fig.add_subplot(gs[1, 3], sharex=ax[0, 3])
+    cax = fig.add_subplot(gs[:, 4])
 
-
-    
-    
     N_procs, user_args = get_n_procs_and_user_args()
     print(f"N_procs set to: {N_procs} processors.")
     gout = True
     
-    run_paths = ['/viper/ptmp/ferhi/fvLism/02kc','/viper/ptmp/ferhi/fvLism/01kc']
+    run_paths = ['/viper/ptmp/ferhi/LEGACY/fvLism/02kc','/viper/ptmp/ferhi/LEGACY/fvLism/01kc', '/viper/ptmp/ferhi/LEGACY/fvLism/kc', '/viper/ptmp/ferhi/LEGACY/fvLism/10kc']
 
 
 
@@ -129,7 +128,7 @@ if __name__ == "__main__":
             t2 = 10 * fv * depth *  sim.R_cloud / sim.v_wind
 
             # Linear sum
-            t_linear = t1 + t2
+            t_linear = t1
 
             try:
                 timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run_name, gout)
@@ -181,7 +180,7 @@ fig.legend(
     frameon=True,
 )
 
-cax = fig.add_subplot(gs[:, 2])
+
 cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
 cbar.set_label(r'$L_{\mathrm{ISM}}$ [$r_{\mathrm{cl}}$]')
 cax.tick_params(axis='y', which='both', color='white', labelcolor='black', direction='in')
@@ -189,17 +188,25 @@ cax.tick_params(axis='y', which='both', color='white', labelcolor='black', direc
 # Axis labels
 ax[0, 0].set_ylabel(r'$\log\left(m(T < 2T_\mathrm{cl}) / m_0\right)$', labelpad=8)
 ax[1, 0].set_ylabel(r'$\Delta v_\mathrm{shear} / v_w$', labelpad = 8)
-for axs in [ax[1, 0], ax[1, 1]]:
+for axs in [ax[1, 0], ax[1, 1], ax[1, 2], ax[1,3]]:
     axs.set_xlabel(r'$\tau$')
+    axs.set_ylim(0,1)
     
 
-for axs in [ax[0, 0], ax[0, 1]]:
+for axs in [ax[0, 0], ax[0, 1], ax[0, 2], ax[0,3]]:
     axs.set_ylim(-3, 1)
 
 plt.setp(ax[0,1].get_yticklabels(), visible=False)
 plt.setp(ax[1,1].get_yticklabels(), visible=False)
+plt.setp(ax[0,2].get_yticklabels(), visible=False)
+plt.setp(ax[1,2].get_yticklabels(), visible=False)
+plt.setp(ax[0,3].get_yticklabels(), visible=False)
+plt.setp(ax[1,3].get_yticklabels(), visible=False)
 plt.setp(ax[0,0].get_xticklabels(), visible=False)
 plt.setp(ax[0,1].get_xticklabels(), visible=False)
+plt.setp(ax[0,2].get_xticklabels(), visible=False)
+plt.setp(ax[0,3].get_xticklabels(), visible=False)
 
-plt.savefig('/u/ferhi/Figures/comparative_masscc_evolution.png', dpi = 300, bbox_inches = 'tight')
+print("Saving figure to /u/ferhi/Figures/testing_mass_evolution.png")
+plt.savefig('/u/ferhi/Figures/testing_mass_evolution.png', dpi = 300, bbox_inches = 'tight')
 plt.show()

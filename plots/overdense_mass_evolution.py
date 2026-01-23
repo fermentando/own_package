@@ -5,7 +5,6 @@ import sys
 import numpy as np
 from utils import *
 from adjust_ics import *
-from single_cloud import SingleCloudCC
 import matplotlib.pyplot as plt
 from multiprocessing import Pool, cpu_count
 import argparse
@@ -13,24 +12,14 @@ from read_hdf5 import read_hdf5
 import seaborn as sns
 from matplotlib.cm import ScalarMappable
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
 import matplotlib.colors as mcolors
 import matplotlib.gridspec as gridspec
 import h5py
 
 
 # Set up a colormap using seaborn
-cmap = sns.color_palette("coolwarm", as_cmap=True)  # or "magma", "plasma", etc.
-from matplotlib.colors import LinearSegmentedColormap
-
-cmap = LinearSegmentedColormap.from_list(
-    "balanced_complementary",
-        ["#1b5e20",  # dark green
-     "#4b0082",  # dark purple (indigo)
-     "#ff6f61"] 
-)
-
-norm = mcolors.Normalize(vmin=0.4, vmax=3)  # Log scale if range is wide
+cmap = sns.color_palette("seismic", as_cmap=True)  # or "magma", "plasma", etc.
+norm = mcolors.Normalize(vmin=0, vmax=3)  # Log scale if range is wide
 sm = ScalarMappable(cmap=cmap, norm=norm)
 sm.set_array([])
 
@@ -95,18 +84,21 @@ if __name__ == "__main__":
     plot_yt = False
     plot_hst = True
 
-    fig = plt.figure(figsize=(6, 8))
-    gs = gridspec.GridSpec(2, 1, height_ratios=[1, 1], hspace=0.14, figure=fig)
-    ax = np.empty((2,), dtype=object)
-    # create the bottom axis first, then share its x-axis with the top one
-    ax[1] = fig.add_subplot(gs[1, 0])
-    ax[0] = fig.add_subplot(gs[0, 0], sharex=ax[1])
+    fig = plt.figure(figsize=(8, 6))
+    gs = gridspec.GridSpec(1, 3, width_ratios=[1, 0.14, 1], wspace=0.1, hspace=0.14, figure=fig)
+    ax = np.empty((2, 2), dtype=object)
+    ax[0, 0] = fig.add_subplot(gs[0, 0])
+    ax[0, 1] = fig.add_subplot(gs[0, 2])
 
+
+
+    
+    
     N_procs, user_args = get_n_procs_and_user_args()
     print(f"N_procs set to: {N_procs} processors.")
     gout = True
-
-    run_paths = ['/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_scaleless', '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_scaleless_mach2', '/viper/ptmp/ferhi/LEGACY/fvLism/correct_M_overdense','/viper/ptmp/ferhi/LEGACY/fvLism/overdense/fv01_longer', '/viper/ptmp/ferhi/LEGACY/fvLism/01kc/scaleless_destruction']
+    
+    run_paths = ['/viper/ptmp/ferhi/fvLism/01kc/fv01_scaleless', '/viper/ptmp/ferhi/fvLism/01kc/fv01_scaleless_mach2', '/viper/ptmp/ferhi/fvLism/correct_M_overdense','/viper/ptmp/ferhi/fvLism/overdense/fv01_longer', '/viper/ptmp/ferhi/fvLism/01kc/scaleless_destruction']
     legends = [
          #r'$\cancel{r_\mathrm{cl}}$',
          r'$v_w=440 \, $kms$^{-1}$',
@@ -117,6 +109,7 @@ if __name__ == "__main__":
 
     for j, run_name in enumerate(run_paths):
 
+            
         sim = SingleCloudCC(os.path.join(run_name, 'ism.in'), dir=run_name)
         code_time_cgs = float(sim.reader.get('units', 'code_time_cgs'))
         code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
@@ -127,17 +120,15 @@ if __name__ == "__main__":
         dt = float(sim.reader.get('parthenon/output1', 'dt'))
         dt2 = float(sim.reader.get('parthenon/output0', 'dt'))
 
+        
+        
         tsh =  depth * sim.R_cloud / sim.v_wind
 
         t1 = sim.R_cloud / sim.v_wind
         t2 = 10 * fv * depth *  sim.R_cloud / sim.v_wind
 
         # Linear sum
-        t_linear = tsh * (sim.T_wind / sim.T_cloud * fv + 1)
-
-        chi = sim.T_wind / sim.T_cloud
-        print(sim.v_wind /( chi**0.5/10 * 150e5))
-
+        t_linear = t1 + t2
 
         try:
             timeseries, norm_mass, cgout, wgout, sum = hst_evolution(run_name, gout)
@@ -145,12 +136,17 @@ if __name__ == "__main__":
             times, v_normalised = hst_entrainment(run_name, vwind=v_wind)
         except Exception as e:
             continue
+        #mask = ~np.isnan(norm_mass)
+        #norm_mass = norm_mass[mask]
+        #timeseries = timeseries[mask]
         color = sm.to_rgba(10*depth)
+        
 
-        plt.style.use('custom_plot')
+       
+        plt.style.use('custom_plot') 
 
-        time_axis = timeseries * code_time_cgs
-        time_axis2 = times * code_time_cgs
+        time_axis = timeseries * code_time_cgs 
+        time_axis2 = times * code_time_cgs 
         idx = (np.abs(time_axis - tsh)).argmin()
         idx2 = (np.abs(time_axis2 - tsh)).argmin()
 
@@ -158,50 +154,36 @@ if __name__ == "__main__":
         correction_index_mass = (np.abs(time_axis - t_shift)).argmin()
         correction_index_v = (np.abs(time_axis2 - t_shift)).argmin()
 
-        if chi< 100: linestyle = '--'
-        else: linestyle = '-'
-        if 'destruction' in run_name: alpha = 0.5
-        else: alpha = 0.8
+        if j == 0:
+            ax[0,0].plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], color = cmap(norm(j)), alpha=0.8)
+            ax[0,1].plot((times * code_time_cgs - t_shift)/ t_linear, v_normalised, color = cmap(norm(j)), alpha=0.8)
+        elif j == len(run_paths)-1:
+            ax[0,0].plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], color = 'black', alpha=0.8)
+            ax[0,1].plot((times * code_time_cgs - t_shift)/ t_linear, v_normalised, color = 'black', alpha=0.8)
+        else:
+            label = legends[j-1]
+            print(j)
+            ax[0,0].plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], label = label, color = cmap(norm(j)), alpha=0.8)
+            ax[0,1].plot((times * code_time_cgs - t_shift)/ t_linear, v_normalised, label = label, color = cmap(norm(j)), alpha=0.8)
+        #ax[0, j].plot(time_axis[idx]/t_linear, norm_mass[idx], marker='o', color='black', zorder=10, alpha = 0.8)  
+        #ax[1, j].plot(time_axis2[idx2]/t_linear, v_normalised[idx2], marker='o', color='black', zorder=10, alpha = 0.8)
+        
+        ax[0,1].set_xlim(left = 0, right = 30)
 
-        mach = sim.v_wind /( chi**0.5/10 * 150e5)
 
-        ax[0].plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], color = cmap(norm(mach)), linestyle = linestyle, alpha=alpha)
-        ax[1].plot((times * code_time_cgs - t_shift)/ t_linear, v_normalised, color = cmap(norm(mach)), linestyle = linestyle, alpha=alpha)
-
-
-        ax[1].set_xlim(left = 0, right = 30)
 
 
 # Axis labels
+ax[0, 0].legend(frameon=True, fontsize=10, loc='lower right', prop={'size': 9.5})
+ax[0, 0].set_ylabel(r'$\log\left(m(T < 2T_\mathrm{cl}) / m_0\right)$', labelpad=8, fontsize=16)
+ax[0, 1].set_ylabel(r'$\Delta v_\mathrm{shear} / v_w$', labelpad = 8, fontsize=16)
+for axs in [ax[0, 0], ax[0, 1]]:
+    axs.set_xlabel(r'$\tau$', fontsize=16)
+    axs.set_xlim(left = 0, right = 40)
+    
 
-colors = ["#1b5e20", "#4b0082", "#ff6f61"]
-mach_labels = [r'$\mathcal{M}_w = 0.4$', r'$\mathcal{M}_w = 1.5$', r'$\mathcal{M}_w = 3$']
 
-# Define line styles
-line_styles = ["--", "-"]
-chi_labels = [r"$\chi = 100$", r"$\chi = 1000$"]
-
-# Create legend handles for colors (patches)
-color_handles = [Patch(facecolor=c, edgecolor='k', label=label) for c, label in zip(colors, mach_labels)]
-
-# Create legend handles for line styles
-line_handles = [Line2D([0], [0], color='k', linestyle=ls, label=label) for ls, label in zip(line_styles, chi_labels)]
-
-# Combine both handles
-all_handles = color_handles + line_handles
-
-# Add the legend
-ax[0].legend(handles=all_handles, frameon=True, fontsize=10, ncol=3, loc='lower right', prop={'size': 10})
-ax[0].set_ylabel(r'$\log\left(m(T < 2T_\mathrm{cl}) / m_0\right)$', labelpad=8, fontsize=14)
-ax[1].set_ylabel(r'$\Delta v_\mathrm{shear} / v_w$', labelpad = 8, fontsize=14)
-# set xlabel only on the shared (bottom) axis
-ax[1].set_xlabel(r'$t_\mathrm{ent}$', fontsize=14)
-# hide x tick labels on the top (shared) axis
-ax[0].label_outer()
-for axs in [ax[0], ax[1]]:
-    axs.set_xlim(left = 0, right = 1.5)
-
-ax[0].set_ylim(-3, 1)
-print("Saving figure to /u/ferhi/Figures/test_other_cases_evolution.png")
-plt.savefig('/u/ferhi/Figures/test_other_cases_evolution.png', dpi = 300, bbox_inches = 'tight')
+ax[0,0].set_ylim(-3, 1)
+print("Saving figure to /u/ferhi/Figures/other_cases_evolution.png")
+plt.savefig('/u/ferhi/Figures/other_cases_evolution.png', dpi = 300, bbox_inches = 'tight')
 plt.show()

@@ -42,12 +42,12 @@ class SingleCloudCC:
         """Initialize physical constants from input file."""
         self.gamma = float(self.reader.get('hydro', 'gamma'))
         He_mass_fraction = float(self.reader.get('hydro', 'He_mass_fraction'))
-        mu_H = 1.0
-        mu = 1 / (He_mass_fraction * 3 / 4 + (1 - He_mass_fraction) * 2)
+        mu_H = 1.0 / (1.0 - He_mass_fraction)
+        mu = 1 / (2 * (1 - He_mass_fraction) + He_mass_fraction * 3 / 4)
         self.mbar = mu * ut.constants.uam
         
         # Initialize cooling module with these constants
-        initialize_cooling_constants(self.gamma, self.mbar)
+        initialize_cooling_constants(self.gamma, self.mbar, mu, mu_H)
 
     def _load_simulation_parameters(self):
         """Load cloud and wind parameters from input file."""
@@ -105,7 +105,7 @@ class SingleCloudCC:
     def _calculate_variables(self):
         """Calculate derived timescales and length scales."""
         T_mix = np.sqrt(self.T_cloud * float(self.reader.get('problem/wtopenrun', 'T_wind_cgs')))
-        self.tcoolmix = get_t_cool(self.n_mix, T_mix)
+        self.tcoolmix = get_t_cool_n( T_mix,self.n_mix, self.mbar)
         self.tcc = np.sqrt(float(self.reader.get('problem/wtopenrun', 'rho_cloud_cgs')) /
                            float(self.reader.get('problem/wtopenrun', 'rho_wind_cgs'))) * \
                            self.R_cloud / self.v_wind
@@ -150,7 +150,7 @@ class SingleCloudCC:
         pressure = {self.rho_cloud/self.mbar * self.T_cloud:.3e} dyne/cm^2
         1/pressure = {1/(self.rho_cloud/self.mbar * self.T_cloud):.3e} cm^3/dyne
         T_cloud (^5/2) = {(self.T_cloud)**2.5:.3g}
-        lamba = {1/self.n_mix/get_t_cool(self.rho_cloud/self.mbar, self.T_cloud) * ut.constants.kb * 1e4:.3g} erg cm^3/s
+        lamba = {1/self.n_mix/get_t_cool_n(self.T_cloud, self.n_mix, self.mbar) * ut.constants.kb * 1e4:.3g} erg cm^3/s
         r_crit = {self.tcoolmix * self.v_wind / 10 :.3g} cm
         """)
 

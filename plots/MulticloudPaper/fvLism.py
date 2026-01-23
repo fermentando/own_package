@@ -67,10 +67,10 @@ sc2 = ax.scatter(size_r_crit[normal_circle], LISM_fv[normal_circle],
                  marker='o', s=80)
 sc3 = ax.scatter(size_r_crit[orange_cross_indices], LISM_fv[orange_cross_indices],
                  color='#800080',
-                 marker='x', s=100)
+                 marker='^', s=100)
 sc4 = ax.scatter(size_r_crit[lightblue_circle_indices], LISM_fv[lightblue_circle_indices],
-                 color='teal',
-                 marker='o', s=80)
+                 color='orange',
+                 marker='v', s=80)
 
 # Group into two legend entries
 
@@ -123,7 +123,7 @@ ax.set_ylabel(r'$fv \ L_\mathrm{ISM} [r_\mathrm{cl}]$')
 ax.grid(True, which='both', linestyle='--', linewidth=0.5)
 combined_handles = [
     (r'$\mathcal{M}_w = 1.5$', dict(markers=['x', 'o'], colors=['red', 'green'])),
-    (r'$\mathcal{M}_w = 0.7$', dict(markers=['x', 'o'], colors=['#800080', 'teal']))
+    (r'$\mathcal{M}_w = 0.7$', dict(markers=['^', 'v'], colors=['#800080', 'orange']))
 ]
 
 # Get current legend handles
@@ -140,6 +140,7 @@ plt.legend(handles, labels, handler_map={
     handles[-1]: HandlerMultiMarker(**combined_handles[1][1])
 }, loc='best')
 
+print("Figure saved to /u/ferhi/Figures/fvLism_plot.png")
 plt.savefig('/u/ferhi/Figures/fvLism_plot.png', dpi=300, bbox_inches='tight', transparent=False)
 plt.show()
 

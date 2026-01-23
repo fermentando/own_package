@@ -70,7 +70,7 @@ if __name__ == "__main__":
     
     plot_yt = False
     plot_hst = True
-    problem_name = 'stratified_box'
+    problem_name = 'wtopenrun'
 
     fig, ax = plt.subplots(figsize=(8, 6))
     
@@ -107,7 +107,7 @@ if __name__ == "__main__":
         if "4x" in run: continue
 
                 
-        sim = SingleCloudCC(os.path.join(run, 'strat.in'), dir=run)
+        sim = SingleCloudCC(os.path.join(run, 'ism.in'), dir=run)
         code_time_cgs = float(sim.reader.get('units', 'code_time_cgs'))
         code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
         files = np.sort(glob.glob(os.path.join(run, 'out/parthenon.prim.*.phdf')))

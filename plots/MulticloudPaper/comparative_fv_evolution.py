@@ -18,17 +18,17 @@ plt.rcParams.update({
 
 # --- Config ---
 run_paths = [
-    '/viper/ptmp2/ferhi/fvLism/01kc/fv02',
-    '/viper/ptmp2/ferhi/fvLism/kc/fv01_shorter',
-    '/viper/ptmp2/ferhi/fvLism/01kc/fv03_long',
-    '/viper/ptmp2/ferhi/fvLism/02kc/fv03',
-    '/viper/ptmp2/ferhi/fvLism/02kc/fv02',
-    '/viper/ptmp2/ferhi/fvLism/02kc/fv01',
-    '/viper/ptmp2/ferhi/fvLism/10kc/fv01_v2',
-    '/viper/ptmp2/ferhi/fvLism/01kc/fv01_30r',
-    '/viper/ptmp2/ferhi/fvLism/kc/fv01',
-    '/viper/ptmp2/ferhi/fvLism/01kc/fv01_scaleless',
-    '/viper/ptmp/ferhi/fvLism/10kc/fv01_v2'
+    '/viper/ptmp2/ferhi/LEGACY/fvLism/01kc/fv02',
+    '/viper/ptmp2/ferhi/LEGACY/fvLism/kc/fv01_shorter',
+    '/viper/ptmp2/ferhi/LEGACY/fvLism/01kc/fv03_long',
+    '/viper/ptmp2/ferhi/LEGACY/fvLism/02kc/fv03',
+    '/viper/ptmp2/ferhi/LEGACY/fvLism/02kc/fv02',
+    '/viper/ptmp2/ferhi/LEGACY/fvLism/02kc/fv01',
+    '/viper/ptmp2/ferhi/LEGACY/fvLism/10kc/fv01_v2',
+    '/viper/ptmp2/ferhi/LEGACY/fvLism/01kc/fv01_30r',
+    '/viper/ptmp2/ferhi/LEGACY/fvLism/kc/fv01',
+    '/viper/ptmp2/ferhi/LEGACY/fvLism/01kc/fv01_scaleless',
+    '/viper/ptmp/ferhi/LEGACY/fvLism/10kc/fv01_v2'
 ]
 
 
@@ -71,8 +71,8 @@ norm = LogNorm(vmin=10, vmax=1e4)
 sm = cm.ScalarMappable(norm=norm, cmap=cmap)
 
 # --- Figure setup ---
-fig = plt.figure(figsize=(8, 6))  # narrower width since one column only
-gs = gridspec.GridSpec(5, 3, width_ratios=[1, 0.04, 1], height_ratios=[0.18, 0.01, 1, 2, 2], hspace=0.14)
+fig = plt.figure(figsize=(14, 6))  # narrower width since one column only
+gs = gridspec.GridSpec(5, 3, width_ratios=[1.4, 0.04, 1], height_ratios=[0.18, 0.01, 1, 2, 2], hspace=0.14)
 
 ax0 = fig.add_subplot(gs[2:, 0])
 ax1 = fig.add_subplot(gs[2, 2])
@@ -87,8 +87,9 @@ for run in run_paths:
     #color = cmap(norm(10 ** -kc_key))
     color = cmap(norm(10 * depth))
 
-    base_path = os.path.join('/u/ferhi/Figures/', *run.split('/')[-3:])
+    base_path = os.path.join('/u/ferhi/Figures/MulticloudPaper/', *run.split('/')[-3:])
     results_file = os.path.join(base_path, "Analysis/fv_fA.npz")
+    print(results_file)
     if not os.path.exists(results_file):
         results_file = os.path.join(base_path, "fv_fA.npz")
 
@@ -123,7 +124,7 @@ for run in run_paths:
         fa = data['fa_values']
         fv_vals = data['fv_values']
 
-        linestyle = linestyles.get(int(-np.log10(fv)), '-')
+        linestyle = '-'#linestyles.get(int(-np.log10(fv)), '-')
         try:
             if "scaleless" in run: 
                 axes_main[0].plot(times_fa, fa, color="black", label = r'$\cancel{r_\mathrm{cl}} $')
@@ -146,7 +147,7 @@ for run in run_paths:
         print(len(snn))
         times_y =  dt_hdf * snn / depth * 10
         y_norm = box_data['y_extents'] / 8  / 100
-        linestyle = linestyles.get(int(-np.log10(fv)), '-')
+        linestyle = '-'#linestyles.get(int(-np.log10(fv)), '-')
         if "scaleless" in run: axes_main[2].plot(times_y, y_norm, color="black", label = r'$\cancel{r_\mathrm{cl}} $')
         else: axes_main[2].plot(times_y, y_norm, color=color, linestyle=linestyle)
 
@@ -158,8 +159,8 @@ axes_main[1].legend(frameon=True, loc='upper right', fontsize=16)
 
 axes_main[2].set_xlabel(r'$t_\mathrm{sh}$')
 axes_main[1].set_xlabel(r'$t_\mathrm{sh}$')
-axes_main[0].set_ylabel(r'$f_A$', labelpad=8)
-axes_main[1].set_ylabel(r'$f_v$', labelpad=8)
+axes_main[0].set_ylabel(r'$f_A(t)$', labelpad=8)
+axes_main[1].set_ylabel(r'$\tilde{f}_v (t)$', labelpad=8)
 axes_main[2].set_ylabel(r'$\ell_\mathrm{slab} / \chi r_\mathrm{cl,init}$', labelpad=-2)
 
 axes_main[0].set_ylim(0.3, 1.1)
@@ -178,12 +179,12 @@ axes_main[0].set_xscale("symlog", linthresh=10)
 
 for ax in [axes_main[1]]:
     ax.xaxis.set_major_locator(SymmetricalLogLocator(base=10.0, linthresh=10, subs=None))
-    ax.xaxis.set_minor_locator(SymmetricalLogLocator(base=10.0, linthresh=10, subs=np.arange(2,10)*0.1))
+    ax.xaxis.set_minor_locator(SymmetricalLogLocator(base=10.0, linthresh=10, subs=np.arange(2,60)*0.1))
     ax.set_xlim(0, 50)
 
 for ax in [axes_main[0], axes_main[2]]:
     ax.xaxis.set_major_locator(SymmetricalLogLocator(base=10.0, linthresh=10, subs=None))
-    ax.xaxis.set_minor_locator(SymmetricalLogLocator(base=10.0, linthresh=10, subs=np.arange(2,10)*0.1))
+    ax.xaxis.set_minor_locator(SymmetricalLogLocator(base=10.0, linthresh=10, subs=np.arange(2,40)*0.1))
     ax.set_xlim(0, 40)
 
 # Offset x label slightly
@@ -199,7 +200,7 @@ cbar.ax.tick_params(which='both', color='white', labeltop=True, labelbottom=Fals
 
 # --- Save and Show ---
 plt.tight_layout()
-fig_path = '/u/ferhi/Figures/modified_fv_fA_LISM.png'
+fig_path = '/u/ferhi/Figures/test_modified_fv_fA_LISM.png'
 plt.savefig(fig_path, bbox_inches='tight', dpi=300)
 print("Saved plot to:", fig_path)
 plt.show()

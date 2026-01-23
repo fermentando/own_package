@@ -19,7 +19,7 @@ def read_hdf5(filename=None, fields=['rho'], n_jobs=1, filepath=None):
         reader = ut.AthenaPKInputFileReader(os.path.abspath(filepath))
     else:
         try:
-            reader = ut.AthenaPKInputFileReader(os.path.abspath(os.path.join(filename, "../strat.in")))
+            reader = ut.AthenaPKInputFileReader(os.path.abspath(os.path.join(filename, "../../strat.in")))
         except Exception as e:
                 raise e
     code_units_length = float(reader.get('units', 'code_length_cgs'))

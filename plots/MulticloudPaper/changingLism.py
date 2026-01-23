@@ -43,7 +43,7 @@ custom_cmap = LinearSegmentedColormap.from_list('yellow_white_purple', colors)
 Hist = False
 Proj = True
 # Define parameters
-baseDir = '/viper/ptmp/ferhi/fvLism/'
+baseDir = '/viper/ptmp/ferhi/LEGACY/fvLism/'
 savename ='changingL_muti_volweighted'
 vol = ['01kc/fv01_movie_2', '01kc/fv01_30r']#, 'kc/fv01_shorter']  # Only one row for now
 snps = [5, 80, 170]
@@ -61,7 +61,16 @@ ref_shape = 0
 plt.style.use('custom_plot')
 
 if Proj: 
-    fig, axes = plt.subplots(nrows=len(vol), ncols=len(snps), figsize=(fig_width, fig_height), gridspec_kw={'wspace': 0.05, 'hspace': 0.05})
+    height_ratios = [0.08] + [1.0] * len(vol)  # small first row + normal rows for volumes
+    fig, axes = plt.subplots(nrows=len(vol) + 1, ncols=len(snps), figsize=(fig_width, subplot_height * (len(vol) + height_ratios[0])),
+                             gridspec_kw={'wspace': 0.05, 'hspace': 0.05, 'height_ratios': height_ratios})
+
+    # turn off the small top-row axes (keeps space but empty)
+    for ax in axes[0, :]:
+        ax.axis('off')
+
+    # use the remaining rows for the rest of the code (volumes)
+    axes = axes[1:, :]
 
     # Ensure `axes` is always a 2D array (fixes single-row case)
     if len(vol) == 1:
@@ -71,7 +80,7 @@ if Proj:
 
     for i, v_i in zip([0,1],vol):
         #if i == 1:
-        snps = [18, 60, 170]
+        snps = [5, 60, 170]
         #if i == 2:
         #    snps = [1, 10, 30]
         #else:
@@ -100,7 +109,24 @@ if Proj:
                 
             plt.style.use('custom_plot')
             
-            plot_dict = plot_projection(rho, view_dir=2, cmap=cmap, weight_data=None, new_fig=False, cbar_flag = False, fig = fig, ax=axes[i, j], kwargs={'norm': norm_plot})
+            # create two sub-axes that split the existing subplot into top and bottom halves
+            bbox = axes[i, j].get_position()  # in figure coordinates
+            # hide the original axes (we'll place two new axes on top)
+            axes[i, j].set_visible(False)
+
+            half_h = bbox.height / 2.0
+            bottom_pos = [bbox.x0, bbox.y0, bbox.width, half_h]
+            top_pos = [bbox.x0, bbox.y0 + half_h, bbox.width, half_h]
+
+            bottom_ax = fig.add_axes(bottom_pos)
+            top_ax = fig.add_axes(top_pos)
+
+            # draw a dashed white dividing line at the shared boundary (in axes coordinates)
+            # draw at y=1 for bottom_ax and y=0 for top_ax so it appears exactly on the seam
+            bottom_ax.plot([0, 1], [1, 1], transform=bottom_ax.transAxes, color='white', linestyle='--', linewidth=1.2, zorder=20, clip_on=False)
+            top_ax.plot([0, 1], [0, 0], transform=top_ax.transAxes, color='white', linestyle='--', linewidth=1.2, zorder=20, clip_on=False)
+
+            # compute geometry & projection parameters
             view_dir = 2
             L = np.shape(rho)
             dim = len(L)
@@ -109,54 +135,87 @@ if Proj:
             y_dir = (view_dir + 2) % dim
             z_dir = view_dir
 
+            x_data = np.linspace(0, L[x_dir] / 240, num=L[x_dir] + 1)
+            y_data = np.linspace(0, L[y_dir] / 240, num=L[y_dir] + 1)
+            z_data = np.linspace(0, L[z_dir] / 240, num=L[z_dir] + 1)
 
-            x_data = np.linspace(0, L[x_dir]/240, num=L[x_dir] + 1)
-            y_data = np.linspace(0, L[y_dir]/240, num=L[y_dir] + 1)
-            z_data = np.linspace(0, L[z_dir]/240, num=L[z_dir] + 1)
+            # Bottom: full projection occupying bottom half
+            mid = L[x_dir] // 2
+            slab_width = 8
+            slab_end = min(mid + slab_width, L[x_dir])
+            rho_top = rho.copy()
+            bottom_slice = rho_top[0:mid, :, :]
+            bottom_plot = plot_projection(bottom_slice, view_dir=view_dir, cmap=cmap,
+                                          weight_data=None, new_fig=False, cbar_flag=False,
+                                          fig=fig, ax=bottom_ax, kwargs={'norm': norm_plot})
+
+            # Top: thin slab around the middle (occupies top half)
+            mid = L[x_dir] // 2
+            slab_width = 8
+            slab_end = min(mid + slab_width, L[x_dir])
+            top_rho = rho.copy()
+            # take only the slab along the projection axis for the top plot
+            # use slicing consistent with view_dir=2 -> slice axis=2
+            top_slice = top_rho[:mid, :, mid:slab_end]
+            top_plot = plot_projection(top_slice, view_dir=view_dir, cmap=cmap,
+                                       weight_data=None, new_fig=False, cbar_flag=False,
+                                       fig=fig, ax=top_ax, kwargs={'norm': norm_plot})
+
+            # draw the same contour (from the full projection) on the bottom half
             weight_data = np.ones_like(rho)
-                        
-            contour_levels = [ 1e-25, 7e-25]
-            weight_data = np.ones_like(rho)       
-            rho_proj = np.sum(rho * weight_data, axis=2) / np.sum(weight_data, axis=2)
+            rho_proj = np.sum(rho * weight_data, axis=view_dir) / np.sum(weight_data, axis=view_dir)
+
             x_centers = 0.5 * (x_data[:-1] + x_data[1:])
             y_centers = 0.5 * (y_data[:-1] + y_data[1:])
-            X, Y = np.meshgrid(y_centers, x_centers) 
-            contour = axes[i,j].contour(
+            X, Y = np.meshgrid(y_centers, x_centers)
+
+            contour_levels = [1e-25, 7e-25]
+            bottom_ax.contour(
                 X, Y,
-                rho_proj,  # transpose to match (ny, nx)
+                rho_proj,
                 levels=contour_levels,
                 colors='white',
                 norm=LogNorm(),
                 linewidths=0.7,
                 alpha=0.4
             )
-            axes[i, j].set_xticks([])
-            axes[i, j].set_yticks([])
-            
 
+            # tidy axes: no ticks/labels on the small axes
+            for a in (bottom_ax, top_ax):
+                a.set_xticks([])
+                a.set_yticks([])
+
+            # keep a handle to the image for the colorbar (use bottom plot's image)
             if snp == snps[-1]:
-                im = plot_dict['slc']
+                im = bottom_plot.get('slc', None)
    
    
 
                 
         
     rs = [6,30]
-    ts = [1, 10, 20]
-    for i in range(len(vol)):
-        plt.style.use('custom_plot')
-        axes[i, 0].set_ylabel(rf'$L_{{\mathrm{{ISM}}}} = {rs[i]} r_{{\mathrm{{cl}}}}$', fontsize = 16, labelpad = 8)
-        #axes[i, 0].set_ylabel(rf'$f_v = 10^{{{rs[i]}}}$', fontsize=16, labelpad=8)
-        axes[i, 0].yaxis.set_label_position("left")
-        
-    for i in range(len(snps)):  
-        axes[0, i].xaxis.set_label_position('top') 
-        axes[0, i].set_xlabel(rf'$\tau \sim {ts[i]}$', fontsize = 16, labelpad = 8)
-            
-    
+    ts = [0, 0.5, 1]
+    # Place readable row labels (left of each row) and column labels (above each column)
+    for ii in range(len(vol)):
+        # use the leftmost original-axis bbox to compute a nice text position
+        bbox_row = axes[ii, 0].get_position()
+        x_text = bbox_row.x0 - 0.01  # slightly more to the left for rotated text
+        y_text = bbox_row.y0 + bbox_row.height / 2.0
+        label = rf'$L_{{\mathrm{{ISM}}}} = {rs[ii]} r_{{\mathrm{{cl}}}}$'
+        # make the row label vertical
+        fig.text(x_text, y_text, label, fontsize=16, va='center', ha='center', rotation=90)
 
+    for jj in range(len(snps)):
+        bbox_col = axes[0, jj].get_position()
+        x_text = bbox_col.x0 + bbox_col.width / 2.0
+        y_text = bbox_col.y0 + bbox_col.height + 0.01  # slightly above the top
+        label = rf'$t_\mathrm{{ent}} \sim {ts[jj]}$'
+        fig.text(x_text, y_text, label, fontsize=16, va='bottom', ha='center')
+    
     # Colorbar setup (apply to all subplots)
-    fig.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.15, top=0.9)  # leave space at bottom
+    plt.suptitle(r'$(r_\mathrm{cl} / r_\mathrm{crit}, f_\mathrm{v}) = (1, 10^{-1})$', x=0.51, y=0.97, fontsize=16)
+    # lower `top` to push subplots down and create more space under the suptitle
+    fig.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.15, top=0.88)  # more space between title and plots
     cbar_ax = fig.add_axes([0.25, -0.02, 0.5, 0.06])  # [left, bottom, width, height] for horizontal bar
     cbar = fig.colorbar(im, cax=cbar_ax, orientation='horizontal')
     cbar_ax.tick_params(axis='x', which='both', color='white', direction='in', pad=10,    length=8,       # tick length

@@ -14,8 +14,20 @@ from scipy.special import k1
 from adioslib import *
 
 
+def perturb_field(field):
+    # Option A: bounded ±1% uniform perturbation
+    rng = np.random.default_rng(123)  # or np.random.seed(123) for reproducibility
+    perturb = rng.uniform(-0.01, 0.01, size=field.shape)
+    field = field * (1.0 + perturb)
 
+    # # Option B: Gaussian perturbation with 1% std (uncomment to use)
+    # rng = np.random.default_rng()
+    # noise = rng.normal(loc=0.0, scale=0.01, size=field.shape)  # ~1% std
+    # field = field * (1.0 + noise)
 
+    # Ensure no negative densities
+    field = np.maximum(field, 0.0)
+    return field
 
 def load_params(filename_input):
     """ Load simulation parameters from the input file. """
@@ -33,7 +45,7 @@ def load_params(filename_input):
 def generate_ICs(filename_input, filename='ICs.bp', localDir='.'):
 
     full_box_rho = gen_rho_strat(filename_input)
-    
+
 
     params = load_params(filename_input)
     stratified_box = StratifiedBox(filename_input, os.path.abspath(os.path.join(filename_input, '..')))
@@ -42,6 +54,11 @@ def generate_ICs(filename_input, filename='ICs.bp', localDir='.'):
     mbar_over_kb = stratified_box.mbar/ut.constants.kb 
     code_length_cgs = float(params['reader'].get('units', 'code_length_cgs'))
     code_mass_cgs = float(params['reader'].get('units', 'code_mass_cgs'))
+    loc_cloud_inserted = params['reader'].get('problem/stratified_box', 'loc_cloud_inserted')
+    if loc_cloud_inserted is not None:
+        loc_cloud_inserted = [float(val) * code_length_cgs for val in loc_cloud_inserted[1:-1].split(',')]
+    else:
+        loc_cloud_inserted = None
 
     mom1 = np.zeros_like(full_box_rho); mom2 = np.zeros_like(full_box_rho); mom3 = np.zeros_like(full_box_rho)
     en = 0.5 * (mom1**2 + mom2**2 + mom3**2)/ full_box_rho +  params['T_base'] / mbar_over_kb * full_box_rho / (params['gamma'] - 1)
@@ -54,11 +71,11 @@ def generate_ICs(filename_input, filename='ICs.bp', localDir='.'):
                                 x_range=(params['x1min'] * code_length_cgs, params['x1max'] * code_length_cgs),
                                 y_range=(params['x2min'] * code_length_cgs, params['x2max'] * code_length_cgs),
                                 z_range=(params['x3min'] * code_length_cgs, params['x3max'] * code_length_cgs),
-                                inplace=False)
-        fields_ICs = (rho_with_cloud, mom1_with_cloud, mom2_with_cloud, mom3_with_cloud, en_with_cloud)
+                                inplace=False, loc_cloud_inserted= loc_cloud_inserted)
+        fields_ICs = (perturb_field(rho_with_cloud), mom1_with_cloud, mom2_with_cloud, mom3_with_cloud, en_with_cloud)
     else:
 
-        fields_ICs = (full_box_rho, mom1, mom2, mom3, en)
+        fields_ICs = (perturb_field(full_box_rho), mom1, mom2, mom3, en)
     
 
 
@@ -157,18 +174,24 @@ def insert_sphere(density, mom1, mom2, mom3, energy,
                   y_range,
                   z_range,
                   inplace=True, 
-                  return_cloud_rho=False):
+                  return_cloud_rho=False, 
+                  loc_cloud_inserted=None):
     if density.shape != energy.shape:
         raise ValueError("density and energy must have the same shape (ny, nx, nz)")
     nx, ny, nz = density.shape
     x = np.linspace(x_range[0], x_range[1], nx)
     y = np.linspace(y_range[0], y_range[1], ny)
     z = np.linspace(z_range[0], z_range[1], nz)
-    x_center = 0.5 * (x_range[0] + x_range[1])
-    z_center = 0.5 * (z_range[0] + z_range[1])
-    
-    # Place cloud 10*r from upper boundary
-    y_center = y_range[1] - 10 * r
+    if loc_cloud_inserted is None:
+        x_center = 0.5 * (x_range[0] + x_range[1])
+        z_center = 0.5 * (z_range[0] + z_range[1])
+        # Place cloud 10*r from upper boundary
+        y_center = y_range[1] - 10 * r
+    else:
+        print(loc_cloud_inserted)
+        x_center, y_center, z_center = loc_cloud_inserted
+
+
     
     print(f'Cloud of radius {r/((y_range[1]-y_range[0])/ny):.3f} cells inserted at ({x_center}, {y_center}, {z_center})')
     

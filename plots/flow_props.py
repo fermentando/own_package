@@ -60,28 +60,38 @@ if __name__ == "__main__":
             print(f"Skipping {run}: {e}")
             continue
 
-        mask = ~np.isnan(norm_mass)
-        timeseries = times/sim.t_eddy - 6
-        idx_0 = np.argmin(np.abs(timeseries))
-        norm_mass = norm_mass- norm_mass[idx_0]
+        # Identify blob injection time
+        print(norm_mass)
+        try:
+            mask = 10**norm_mass > 1
+            idx0 = 0#np.where(mask)[0][0]
+        except:
+            mask = 10**norm_mass > 0   
+            idx0 = 0#np.where(mask)[0][0]
 
-        timeseries = timeseries[mask]
-        norm_mass = norm_mass[mask]
+        timeseries = times[idx0:] - times[idx0]
+        norm_mass = norm_mass[idx0:]- norm_mass[idx0]
+        vel = vel[idx0:] 
+
 
         label = run.split('/')[-1]
         plt.style.use('custom_plot')
 
         # --- MASS EVOLUTION subplot ---
-        ax_mass.plot(timeseries * sim.t_eddy * code_time_cgs / u.Myr.to('s'), norm_mass, label=f"{label} mass", alpha=0.8)
-       # if np.sum(cgout) > 10 * len(cgout) * 1e-22:
-       #     ax_mass.plot(timeseries, cgout, alpha=0.5, label=f"{label} cgout")
-       # if np.sum(wgout) > 10 * len(wgout) * 1e-22:
-       #     ax_mass.plot(timeseries, wgout, alpha=0.3, label=f"{label} wgout")
-       # if (np.sum(cgout) > 10 * len(cgout) * 1e-22) and (np.sum(wgout) > 10 * len(wgout) * 1e-22):
-       #     ax_mass.plot(timeseries, total, color='black', linestyle='--', alpha=0.3, label="total")
+        try:
+            ax_mass.plot(timeseries * sim.t_eddy * code_time_cgs / u.Myr.to('s'), norm_mass, label=f"{label} mass", alpha=0.8)
+        # if np.sum(cgout) > 10 * len(cgout) * 1e-22:
+        #     ax_mass.plot(timeseries, cgout, alpha=0.5, label=f"{label} cgout")
+        # if np.sum(wgout) > 10 * len(wgout) * 1e-22:
+        #     ax_mass.plot(timeseries, wgout, alpha=0.3, label=f"{label} wgout")
+        # if (np.sum(cgout) > 10 * len(cgout) * 1e-22) and (np.sum(wgout) > 10 * len(wgout) * 1e-22):
+        #     ax_mass.plot(timeseries, total, color='black', linestyle='--', alpha=0.3, label="total")
 
-        # --- VELOCITY EVOLUTION subplot ---
-        ax_vel.plot(timeseries * sim.t_eddy * code_time_cgs / u.Myr.to('s'), vel * code_length_cgs / code_time_cgs /1e5, label=f"{label} velocity", alpha=0.8)
+            # --- VELOCITY EVOLUTION subplot ---
+            ax_vel.plot(timeseries * sim.t_eddy * code_time_cgs / u.Myr.to('s'), vel * code_length_cgs / code_time_cgs /1e5, label=f"{label} velocity", alpha=0.8)
+        except: 
+            ax_mass.plot(timeseries *  code_time_cgs / u.Myr.to('s'), norm_mass, label=f"{label} mass", alpha=0.8)
+            ax_vel.plot(timeseries * code_time_cgs / u.Myr.to('s'), vel * code_length_cgs / code_time_cgs /1e5, label=f"{label} velocity", alpha=0.8)
 
     # --- LABELS and formatting ---
     ax_mass.set_ylabel(r'$\log(m/m_0)$')

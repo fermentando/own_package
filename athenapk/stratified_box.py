@@ -8,7 +8,7 @@ import os
 import math
 import numpy as np
 import utils as ut
-from cooling import initialize_cooling_constants, load_cooling_table, get_t_cool_n, get_t_cool_cgs
+from cooling import initialize_cooling_constants, load_cooling_table, get_t_cool_n, get_t_cool_cgs, get_l_shatter
 from utils_physics import calculate_pressure
 
 
@@ -47,12 +47,12 @@ class StratifiedBox:
         """Initialize physical constants from input file."""
         self.gamma = float(self.reader.get('hydro', 'gamma'))
         He_mass_fraction = float(self.reader.get('hydro', 'He_mass_fraction'))
-        mu_H = 1.0
-        mu = 1 / (He_mass_fraction * 3 / 4 + (1 - He_mass_fraction) * 2)
-        self.mbar = mu * ut.constants.uam
-        
+        self.mu_H = 1.0 / (1.0 - He_mass_fraction)
+        self.mu = 1 / (2 * (1 - He_mass_fraction) + He_mass_fraction * 3 / 4)
+        self.mbar = self.mu * ut.constants.uam
+
         # Initialize cooling module with these constants
-        initialize_cooling_constants(self.gamma, self.mbar)
+        initialize_cooling_constants(self.gamma, self.mbar, self.mu, self.mu_H)
 
     def _load_simulation_parameters(self):
         """Load stratified box parameters from input file."""
@@ -62,10 +62,11 @@ class StratifiedBox:
         self.r_cloud_inserted = float(self.reader.get('problem/stratified_box', 'r_cloud_inserted'))
         self.T_cloud = float(self.reader.get('problem/stratified_box', 'T_cloud'))
         self.chi = self.T_base / self.T_cloud
+        self.mach = float(self.reader.get('problem/turbulence', 'Mach_drive'))
 
         self.code_mass_cgs = float(self.reader.get('units', 'code_mass_cgs'))
         self.code_length_cgs = float(self.reader.get('units', 'code_length_cgs'))
-        self.code_times_cgs = float(self.reader.get('units', 'code_time_cgs'))
+        self.code_time_cgs = float(self.reader.get('units', 'code_time_cgs'))
 
     def _load_cooling_table(self, dir):
         """
@@ -87,10 +88,10 @@ class StratifiedBox:
         self.g = 2 * np.pi * ut.constants.G * self.surface_density * self.code_mass_cgs / (self.code_length_cgs)**2
         c_s = np.sqrt(self.T_base / mbar_over_kb)
         self.H = c_s**2 / self.g
-        self.rho_base = (self.surface_density * self.code_mass_cgs / (self.code_length_cgs)**2) / (2 * self.H)
+        self.rho_base = (self.surface_density * self.code_mass_cgs / (self.code_length_cgs)**2) / (2 * self.a_over_H * self.H)
         
         wmax = float(self.reader.get('problem/turbulence', 'window_xmax'))
-        self.y_centre = float(self.reader.get('parthenon/mesh', 'x2min')) + 0.5 * ( float(self.reader.get('parthenon/mesh', 'x2max')) - float(self.reader.get('parthenon/mesh', 'x2min')) )
+        self.y_centre = float(self.reader.get('parthenon/mesh', 'x2min')) + 0.8 * ( float(self.reader.get('parthenon/mesh', 'x2max')) - float(self.reader.get('parthenon/mesh', 'x2min')) )
         self.env_rho = self.rho_base * np.exp(-self.a_over_H * (np.sqrt(1 + (self.y_centre * self.code_length_cgs / (self.a_over_H * self.H))**2) - 1))
         self.cloud_rho = self.chi * self.env_rho
 
@@ -183,8 +184,9 @@ class StratifiedBox:
         Ldrive = (Lymax - Lymin) / k_peak * self.code_length_cgs
         vs = self._get_c_s(self.T_base) * mach 
         t_eddy = Ldrive / vs 
-        t_r_eddy = self.r_cloud_inserted * ut.constants.pc_to_cm / vs * (self.chi)**0.5
+        self.t_r_eddy = self.r_cloud_inserted * self.code_length_cgs / vs * (self.chi)**0.5
         Lambda_units = float(self.reader.get('cooling', 'lambda_units_cgs'))
+        tgrow = self.chi * np.sqrt(get_t_cool_cgs(self.cloud_rho, self.T_cloud, self.mbar)*Lambda_units * self.r_cloud_inserted * self.code_length_cgs / (vs))
         
         print(f"""
         >> Strat disk properties <<
@@ -194,22 +196,32 @@ class StratifiedBox:
         r_cl / d_cell = {self.r_cloud_inserted /dcell:.3e} 
         L_drive / H = {Ldrive / self.H:.3e}
         Fr = {self.H / Ldrive * mach}
-        r_fall / H = {mach**2 / self.chi :.3e}
-        r_cl = {self.r_cloud_inserted:.3e} pc
-        r_fall^2 / l_react = {((mach**2 / self.chi * self.H)**2 / vs / get_t_cool_cgs(self.cloud_rho, self.T_cloud, self.mbar) /Lambda_units)/ut.constants.pc_to_cm:.3e} pc
-        lcool,min = {(self._get_c_s(self.T_cloud) * self._get_t_cool_min(1e-26, self.T_cloud, self.mbar) * Lambda_units)/ut.constants.pc_to_cm:.3e} pc
-        r_fall^2 / vs = { vs/1e5:.3e} Myrs
-
+        
         R_cl = {self.r_cloud_inserted:.3e} pc
-        n_0 = {self.env_rho/self.mbar:.3e} pc
+        n_cl = {self.cloud_rho/self.mbar:.3e} cm^-3
+        n_0 = {self.rho_base/self.mbar:.3e} cm^-3
         chi = {self.chi}
+        Ly / rcl = {(x2max - x2min) * self.code_length_cgs / (self.r_cloud_inserted * self.code_length_cgs):.3e}
 
         vs = {vs/1e5:.3e} km/s
         t_cool,mix = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)*Lambda_units*ut.constants.s_to_Myrs:.3e} Myr
         t_cool = {get_t_cool_cgs(self.cloud_rho, self.T_cloud, self.mbar)*Lambda_units*ut.constants.s_to_Myrs:.3e} Myr
-        t_r_eddy = {t_r_eddy*ut.constants.s_to_Myrs:.3e} Myr
-        t_cool,mix / t_eddy = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)*Lambda_units / t_r_eddy:.3e}
+        t_r_eddy = {self.t_r_eddy*ut.constants.s_to_Myrs:.3e} Myr
+        t_cool,mix / t_eddy = {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)*Lambda_units / self.t_r_eddy:.3e}
         t_grow = {self.t_grow_subsonic*ut.constants.s_to_Myrs:.3e} Myr
+        Cloud / Lshatter: {self.r_cloud_inserted * self.code_length_cgs / get_l_shatter(self.env_rho/ self.mbar * ut.constants.kb * self.T_base)[0] /Lambda_units:.3e}
+
+        Density: {self.env_rho:.3e} g/cm^3
+        Temperature: {self.T_base:.3e} K
+        Pressure: {self.env_rho * ut.constants.kb * self.T_base / self.mbar:.3e} cgs
+        Mbar: {self.mbar:.3e} g
+        Env_rho: {self.env_rho/self.mbar:.3e} cm^3
+
+        tgrow = {tgrow * ut.constants.s_to_Myrs:.3e} Myr
+        teddy = { self.r_cloud_inserted * self.code_length_cgs / (vs) * ut.constants.s_to_Myrs:.3e} Myr
+        tff,growth = {(Lymax - Lymin)/2 * self.code_length_cgs / (self.g * tgrow) * ut.constants.s_to_Myrs:.3e} Myr
+        tff,drag = {(Lymax - Lymin)/2 * self.code_length_cgs / np.sqrt(self.g * self.chi * self.r_cloud_inserted * self.code_length_cgs * 2) * ut.constants.s_to_Myrs:.3e} Myr
+
         """)
 
     def _scale_mesh(self, axis_scaling):
@@ -261,7 +273,7 @@ class StratifiedBox:
         L_box = Lymax - Lymin
         cs = self._get_c_s(T0)  # Sound speed in the medium
         v_turb = cs * mach / code_velocity_cgs
-        t_destruction = self.chi**0.5 * (self.r_cloud_inserted * ut.constants.pc_to_cm) / (cs * mach) / code_time_cgs
+        self.t_destruction = self.chi**0.5 * (self.r_cloud_inserted * ut.constants.pc_to_cm) / (cs * mach) / code_time_cgs
 
         L_drive = L_box / k_peak
         self.t_eddy = L_drive / v_turb
@@ -270,13 +282,16 @@ class StratifiedBox:
         tff = cs_h / self.g / code_time_cgs
         print("this is tff:, " ,tff)
 
-        t_injec = 6 * self.t_eddy
+        t_injec = 3 * self.t_eddy
+        self.t_inject = t_injec
         tlim =  t_injec + 10*tff
-        dt_hst = 0.001 * t_destruction
-        dt_hdf = 0.1 * t_destruction
-        dt_rst = 1 * t_destruction
+        dt_hst = 0.001 * self.t_eddy
+        dt_hdf = 0.1 * self.t_eddy
+        dt_rst = 1 * self.t_eddy
         
         self.reader.set_('problem/stratified_box', 'rescale_code_time_to_tff', 'false')
+        self.reader.set_('problem/stratified_box', 'rescale_once_at_time',  t_injec)
+        self.reader.set_('problem/stratified_box', 'rescale_to_rms_Ms', mach)
         self.reader.set_('problem/stratified_box', 'inject_once_at_time',  t_injec)
         self.reader.set_('cooling', 'start_time', t_injec)
         self.reader.set_('problem/turbulence', 'corr_time', self.t_eddy)
@@ -415,7 +430,13 @@ class StratifiedBox:
         lambda_units = re.search(r"cooling/lambda_units_cgs=([0-9.eE+-]+)", text)
         t_cool_restart = get_t_cool_cgs(self.cloud_rho, self.T_cloud, self.mbar) * float(lambda_units.group(1)) * ut.constants.s_to_Myrs
         print(f"Cooling time at restart conditions: {t_cool_restart:.3e} Myrs")
+        print(self.mach * self._get_c_s(self.T_base)/1e5)
+        print(f"tcool,mix / tcc at restart conditions: {get_t_cool_cgs(np.sqrt(self.env_rho * self.cloud_rho), np.sqrt(self.T_base * self.T_cloud), self.mbar)*float(lambda_units.group(1)) / (self.r_cloud_inserted * self.code_length_cgs * self.chi**0.5 /(self.mach * self._get_c_s(self.T_base))):.3e}")
+        lshatter = get_l_shatter(self.env_rho/self.mbar * ut.constants.kb *1e6)[0] * float(lambda_units.group(1)) / self.code_length_cgs
+        print(f"  Cloud / Lshatter: {self.r_cloud_inserted * self.code_length_cgs / get_l_shatter(self.env_rho / self.mbar * ut.constants.kb * self.T_base)[0]/ float(lambda_units.group(1)):.3e} ")
+        print(f"lshatter at restart conditions: {lshatter:.3e} pc")
         return t_cool_restart
+    
     def set_y(self, height):
         """
         Re-center x2min and x2max so that the mesh center is at `height`,
@@ -448,7 +469,15 @@ class StratifiedBox:
         self.reader.set_('parthenon/mesh', 'x1max', +half_width)
         self.reader.set_('parthenon/mesh', 'x3min', -half_width)
         self.reader.set_('parthenon/mesh', 'x3max', +half_width)
+        self.reader.set_('problem/stratified_box', 'loc_cloud_inserted', [0, height, 0])
 
-        self._set_t_corr()
         self._enforce_cartesian_grid()
+
+    def radius(self, radius):
+        """
+        Set cloud radius in pc.
+        
+        """
+        self.reader.set_('problem/stratified_box', 'r_cloud_inserted', radius)
+        self.reader.save()
         
