@@ -7,6 +7,7 @@ import glob
 from utils import get_n_procs_and_user_args
 from generate_ics import load_params
 from stratified_box import StratifiedBox
+from turbulent_box import TurbulentBox
 from read_hdf5 import read_hdf5
 import unyt
 import matplotlib.pyplot as plt
@@ -385,10 +386,16 @@ if __name__ == "__main__":
     N_procs, user_args = get_n_procs_and_user_args()
     print(f"N_procs set to: {N_procs} processors.")
 
+    if len(user_args) >= 1:
+        start_index = int(user_args[0])
+    else:
+        start_index = 0
+
     
     if True: #len(user_args) == 0:
         RUNS = [os.getcwd()]
         run_paths = RUNS
+        print('Running in current directory: ', RUNS[0])
         parts = RUNS[0].split('/')
         saveFile = f"{parts[-3]}/{parts[-2]}/{parts[-1]}"
         print('Saved to: ', saveFile)
@@ -409,7 +416,7 @@ if __name__ == "__main__":
             os.makedirs(os.path.join('/u/ferhi/Figures/velocity_structure_function/',parts[-2]))
 
 
-    single_file_paths = sorted(glob.glob(os.path.join(run_paths[0], 'out/parthenon.prim.[0-9]*.phdf')))[30:][::-1]
+    single_file_paths = sorted(glob.glob(os.path.join(run_paths[0], 'out/parthenon.prim.[0-9]*.phdf')))[start_index:]
     print(f"Found {len(single_file_paths)} files to process.")
 
     # Make it a cyclic iterator
@@ -417,8 +424,13 @@ if __name__ == "__main__":
 
     sim_input = run_paths[0].split('out')[0]
     print(sim_input)
-    sim = StratifiedBox(os.path.join(sim_input, 'strat.in'), dir=sim_input)
-    stand_l  = sim.r_cloud_inserted
+    try:
+        sim = StratifiedBox(os.path.join(sim_input, 'strat.in'), dir=sim_input)
+        stand_l  = sim.r_cloud_inserted
+    except:
+        sim = TurbulentBox(os.path.join(sim_input, 'turbulence.in'), dir=sim_input)
+        stand_l = float(sim.reader.get('problem/turbulence', 'inject_blob_radius_0'))  # in pc
+    
     
     
 

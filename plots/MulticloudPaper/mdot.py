@@ -15,6 +15,7 @@ from matplotlib.lines import Line2D
 import matplotlib.colors as mcolors
 import matplotlib.gridspec as gridspec
 import h5py
+from cooling import get_t_cool_min, get_t_cool_cgs, get_c_s
 
 plt.rcParams.update({
     "text.usetex": True,
@@ -86,7 +87,7 @@ if __name__ == "__main__":
     print(f"N_procs set to: {N_procs} processors.")
     gout = True
     
-    run_paths = ['/viper/ptmp/ferhi/fvLism/02kc','/viper/ptmp/ferhi/fvLism/01kc']
+    run_paths = ['/viper/ptmp/ferhi/LEGACY/fvLism/02kc','/viper/ptmp/ferhi/LEGACY/fvLism/01kc']
 
 
 
@@ -220,6 +221,6 @@ ax[0,0].set_ylabel(r'$\dot{m} \,  t_\mathrm{grow} / m_\mathrm{0}$', labelpad=5)
     
 
 
-
-plt.savefig('/u/ferhi/Figures/tgrow_mdot.png', dpi = 300, bbox_inches = 'tight')
+print('Figure saved to /u/ferhi/Figures/test_tgrow_mdot.png')
+plt.savefig('/u/ferhi/Figures/test_tgrow_mdot.png', dpi = 300, bbox_inches = 'tight')
 plt.show()

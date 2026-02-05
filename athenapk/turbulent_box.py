@@ -180,6 +180,7 @@ class TurbulentBox:
         print(f"Cooling function units: {Lambda_units:.3e} erg cm^3 / s")
         p0 = float(self.reader.get('problem/turbulence', 'p0')) * self.code_mass_cgs / self.code_length_cgs / self.code_time_cgs**2
         rho0 = float(self.reader.get('problem/turbulence', 'rho0')) * self.code_mass_cgs / self.code_length_cgs**3
+        chi_inserted_cloud = float(self.reader.get('problem/turbulence', 'chi_inserted_cloud'))
         T0 = p0 / (rho0 * ut.constants.kb / self.mbar)  # Initial temperature in K
         mach = float(self.reader.get('problem/turbulence', 'Mach_drive'))
         dx = (float(self.reader.get('parthenon/mesh', 'x1max')) - float(self.reader.get('parthenon/mesh', 'x1min'))) / int(self.reader.get('parthenon/mesh', 'nx1'))
@@ -198,7 +199,7 @@ class TurbulentBox:
         print(f"  Density of the cloud: {rho0/self.mbar * 100:.3e} cm^-3")
         print(f" This is l_shatter: {get_l_shatter(p0, self.mbar)[0] / ut.constants.pc_to_cm:.3e} pc")
         print(f"  Cooling Time: {get_t_cool_n(T0 / 100, rho0 * 100 / self.mbar, self.mbar) * ut.constants.s_to_Myrs * Lambda_units:.3e} Myr")
-        print(f"  t_cool,mix / t_eddy = {get_t_cool_n(T0 / 10, rho0 * 10 / self.mbar, self.mbar)*Lambda_units / (rcl * self.code_length_cgs * 10 / v_turb):.3e}")
+        print(f"  t_cool,mix / t_eddy = {get_t_cool_n(T0 / 10, rho0 * 10 / self.mbar, self.mbar)*Lambda_units / (rcl * self.code_length_cgs * (chi_inserted_cloud)**2 / v_turb):.3e}")
         print(f"  Cloud radius: {rcl:.3e} pc")
         print(f"  Cloud / Lshatter: {rcl * ut.constants.pc_to_cm / get_l_shatter(p0)[0] / Lambda_units:.3e} ")
         print(f"  Cloud radius / cell resolution: {rcl /dx:.3e} ")

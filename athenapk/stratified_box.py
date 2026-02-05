@@ -91,7 +91,7 @@ class StratifiedBox:
         self.rho_base = (self.surface_density * self.code_mass_cgs / (self.code_length_cgs)**2) / (2 * self.a_over_H * self.H)
         
         wmax = float(self.reader.get('problem/turbulence', 'window_xmax'))
-        self.y_centre = float(self.reader.get('parthenon/mesh', 'x2min')) + 0.8 * ( float(self.reader.get('parthenon/mesh', 'x2max')) - float(self.reader.get('parthenon/mesh', 'x2min')) )
+        self.y_centre = float(self.reader.get('parthenon/mesh', 'x2min')) + 0.5 * ( float(self.reader.get('parthenon/mesh', 'x2max')) - float(self.reader.get('parthenon/mesh', 'x2min')) )
         self.env_rho = self.rho_base * np.exp(-self.a_over_H * (np.sqrt(1 + (self.y_centre * self.code_length_cgs / (self.a_over_H * self.H))**2) - 1))
         self.cloud_rho = self.chi * self.env_rho
 
@@ -195,6 +195,7 @@ class StratifiedBox:
         g = {self.g:.3e} cgs
         r_cl / d_cell = {self.r_cloud_inserted /dcell:.3e} 
         L_drive / H = {Ldrive / self.H:.3e}
+        y / H = {self.y_centre*ut.constants.pc_to_cm / self.H:.3e}
         Fr = {self.H / Ldrive * mach}
         
         R_cl = {self.r_cloud_inserted:.3e} pc
@@ -218,7 +219,8 @@ class StratifiedBox:
         Env_rho: {self.env_rho/self.mbar:.3e} cm^3
 
         tgrow = {tgrow * ut.constants.s_to_Myrs:.3e} Myr
-        teddy = { self.r_cloud_inserted * self.code_length_cgs / (vs) * ut.constants.s_to_Myrs:.3e} Myr
+        teddy = { t_eddy * ut.constants.s_to_Myrs:.3e} Myr
+        tff = {np.sqrt((Lymax - Lymin) * self.code_length_cgs / self.g ) * ut.constants.s_to_Myrs:.3e} Myr
         tff,growth = {(Lymax - Lymin)/2 * self.code_length_cgs / (self.g * tgrow) * ut.constants.s_to_Myrs:.3e} Myr
         tff,drag = {(Lymax - Lymin)/2 * self.code_length_cgs / np.sqrt(self.g * self.chi * self.r_cloud_inserted * self.code_length_cgs * 2) * ut.constants.s_to_Myrs:.3e} Myr
 
@@ -282,7 +284,7 @@ class StratifiedBox:
         tff = cs_h / self.g / code_time_cgs
         print("this is tff:, " ,tff)
 
-        t_injec = 3 * self.t_eddy
+        t_injec = 4 * self.t_eddy
         self.t_inject = t_injec
         tlim =  t_injec + 10*tff
         dt_hst = 0.001 * self.t_eddy

@@ -6,6 +6,7 @@ from adjust_ics import *
 import matplotlib.pyplot as plt
 import astropy.units as u
 import yt
+from cooling import get_t_cool_cgs
 
 
 def read_hst(run): 
@@ -58,7 +59,7 @@ if __name__ == "__main__":
 
     if plot_hst:
             # Two subplots: mass evolution (top), velocity (bottom)
-        fig, (ax_mass, ax_vel) = plt.subplots(2, 1, figsize=(8, 10), sharex=True)
+        fig, (ax_mass, ax_vel, ax_timescales) = plt.subplots(3, 1, figsize=(8, 10), sharex=True)
         for j, run in enumerate(run_paths):
             sim = TurbulentBox(os.path.join(run, 'turbulence.in'), dir=run)
             code_time_cgs = float(sim.reader.get('units', 'code_time_cgs'))
@@ -84,6 +85,13 @@ if __name__ == "__main__":
             timeseries = times[idx0:] - times[idx0]
             norm_mass = norm_mass[idx0:]- norm_mass[idx0]
             vel = vel[idx0:] 
+
+            constr_length = len(timeseries)
+            vel = vel[:constr_length]
+            cgout = cgout[:constr_length]
+            wgout = wgout[:constr_length]
+            total = total[:constr_length]
+            norm_mass = norm_mass[:constr_length]
 
 
             label = run.split('/')[-1]
