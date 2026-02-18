@@ -90,8 +90,9 @@ def generate_ICs(filename_input, filename='ICs.bp', localDir='.'):
         ICs = gen_adios(MeshSize, MeshBlockSize, fields_ICs, filename, localDir=localDir)
 
         
-    print(f"ICs shape: {ICs.shape}")
+
     try:
+        print(f"ICs shape: {ICs.shape}")
         plt.imshow(ICs[0, :, :, nx3 // 2], cmap='viridis', norm=matplotlib.colors.LogNorm())
         plt.colorbar()
         plt.savefig("ICs_slice.png")

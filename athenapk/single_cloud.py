@@ -42,12 +42,13 @@ class SingleCloudCC:
         """Initialize physical constants from input file."""
         self.gamma = float(self.reader.get('hydro', 'gamma'))
         He_mass_fraction = float(self.reader.get('hydro', 'He_mass_fraction'))
-        mu_H = 1.0 / (1.0 - He_mass_fraction)
-        mu = 1 / (2 * (1 - He_mass_fraction) + He_mass_fraction * 3 / 4)
-        self.mbar = mu * ut.constants.uam
+        self.mu_H = 1.0 / (1.0 - He_mass_fraction)
+        self.mu = 1 / (2 * (1 - He_mass_fraction) + He_mass_fraction * 3 / 4)
+        self.mbar = self.mu * ut.constants.uam
+        print(f"Initialized constants: gamma={self.gamma}, mu_H={self.mu_H:.3f}, mu={self.mu:.3f}, mbar={self.mbar:.3e} g")
         
         # Initialize cooling module with these constants
-        initialize_cooling_constants(self.gamma, self.mbar, mu, mu_H)
+        initialize_cooling_constants(self.gamma, self.mbar, self.mu, self.mu_H)
 
     def _load_simulation_parameters(self):
         """Load cloud and wind parameters from input file."""
@@ -152,6 +153,7 @@ class SingleCloudCC:
         T_cloud (^5/2) = {(self.T_cloud)**2.5:.3g}
         lamba = {1/self.n_mix/get_t_cool_n(self.T_cloud, self.n_mix, self.mbar) * ut.constants.kb * 1e4:.3g} erg cm^3/s
         r_crit = {self.tcoolmix * self.v_wind / 10 :.3g} cm
+        mbar = {self.mbar:.3e} g
         """)
 
     def reset_survival(self, ratio, rdx=8):

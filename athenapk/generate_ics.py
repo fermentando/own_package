@@ -102,10 +102,12 @@ def gen_adios_streaming(MeshSize, MeshBlockSize, fields, filename):
     assert nx1 % mbl1 == 0
 
     # Reshape fields into block views (no copies if contiguous)
+    # Original field shape: (nx3, nx2, nx1)
+    # Target shape: (nz_blocks, mbl3, ny_blocks, mbl2, nx_blocks, mbl1)
     meshblock_fields = [
-        field.reshape(nx_blocks, mbl3,
+        field.reshape(nz_blocks, mbl3,
                       ny_blocks, mbl2,
-                      nz_blocks, mbl1)
+                      nx_blocks, mbl1)
         for field in fields
     ]
 
@@ -138,7 +140,7 @@ def gen_adios_streaming(MeshSize, MeshBlockSize, fields, filename):
 
                         for f in range(n_fields):
                             block[f] = meshblock_fields[f][
-                                bx, :, by, :, bz, :
+                                bz, :, by, :, bx, :
                             ]
 
                         # ADIOS expects full dimensionality
@@ -174,15 +176,99 @@ def gen_adios_streaming(MeshSize, MeshBlockSize, fields, filename):
 
     # Optional: reconstruct original field layout for return
     # This allocates full memory again – remove if not needed
-    reconstructed = np.empty(
-        (n_fields, nx3, nx2, nx1),
-        dtype=fields[0].dtype
+    #reconstructed = np.empty(
+    #    (n_fields, nx3, nx2, nx1),
+    #    dtype=fields[0].dtype
+    #)
+
+    #for f in range(n_fields):
+    #    reconstructed[f] = fields[f]
+
+    return None
+def gen_adios_streaming_new(MeshSize, MeshBlockSize, fields, filename):
+    """
+    Write mesh-blocked field data to ADIOS with memory-efficient step-based flushing.
+    Uses multiple steps to allow ADIOS2 to flush buffers naturally.
+    """
+    mbl3, mbl2, mbl1 = MeshBlockSize
+    nx3, nx2, nx1 = MeshSize
+
+    nz_blocks = nx3 // mbl3
+    ny_blocks = nx2 // mbl2
+    nx_blocks = nx1 // mbl1
+    n_fields = len(fields)
+
+    assert nx3 % mbl3 == 0
+    assert nx2 % mbl2 == 0
+    assert nx1 % mbl1 == 0
+
+    saveDir = os.path.join(localDir, filename)
+    varname = filename.split(".bp")[0]
+
+    global_shape = (
+        nz_blocks,
+        ny_blocks,
+        nx_blocks,
+        n_fields,
+        mbl3,
+        mbl2,
+        mbl1
     )
 
-    for f in range(n_fields):
-        reconstructed[f] = fields[f]
+    total_blocks = nx_blocks * ny_blocks * nz_blocks
+    blocks_per_step = 20  # Process 20 blocks per step to avoid buffering
+    
+    # Precompute all block coordinates
+    block_coords = []
+    for bx in range(nx_blocks):
+        for by in range(ny_blocks):
+            for bz in range(nz_blocks):
+                block_coords.append((bx, by, bz))
+    
+    # Calculate number of steps needed
+    n_steps = (total_blocks + blocks_per_step - 1) // blocks_per_step
+    
+    with Stream(saveDir, "w") as s:
+        for step_idx, _ in enumerate(s.steps(n_steps)):
+            step_start = step_idx * blocks_per_step
+            step_end = min((step_idx + 1) * blocks_per_step, total_blocks)
+            
+            for idx in range(step_start, step_end):
+                bx, by, bz = block_coords[idx]
+                
+                # Build one block: shape (n_fields, mbl3, mbl2, mbl1)
+                block = np.empty(
+                    (n_fields, mbl3, mbl2, mbl1),
+                    dtype=fields[0].dtype
+                )
 
-    return reconstructed
+                # Extract from each field individually
+                for f in range(n_fields):
+                    z_start = bz * mbl3
+                    z_end = z_start + mbl3
+                    y_start = by * mbl2
+                    y_end = y_start + mbl2
+                    x_start = bx * mbl1
+                    x_end = x_start + mbl1
+                    
+                    block[f] = fields[f][z_start:z_end, y_start:y_end, x_start:x_end]
+
+                start = [bz, by, bx, 0, 0, 0, 0]
+                count = [1, 1, 1, n_fields, mbl3, mbl2, mbl1]
+
+                s.write(
+                    varname,
+                    block,
+                    shape=global_shape,
+                    start=start,
+                    count=count
+                )
+                
+                if (idx + 1) % 50 == 0:
+                    print(f"  Processed {idx + 1}/{total_blocks} blocks")
+
+    print(f"ICs written to {saveDir}")
+    return None
 
 def gen_adios_chunked(MeshSize, MeshBlockSize, fields, filename):
     """
@@ -328,7 +414,7 @@ def generate_ICs(params, rho_field, filename='ICs.bp', cloud_props=None):
     if filename.split(".")[-1] == "bin":
         ICs = gen_bin(fields, filename)
     elif filename.split(".")[-1] == "bp":
-        ICs = gen_adios_streaming(MeshSize, MeshBlockSize, fields, filename)
+        ICs = gen_adios_streaming_new(MeshSize, MeshBlockSize, fields, filename)
         #ICs = gen_adios(MeshSize, MeshBlockSize, fields, filename)
 
 

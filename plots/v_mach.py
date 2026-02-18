@@ -94,8 +94,8 @@ if __name__ == "__main__":
     
     # Find all matching runs
     base_pattern = '/viper/ptmp/ferhi/StratDisk/m0.*/r10/burnin'
-    #noturb_path = '/viper/ptmp/ferhi/StratDisk/noturb/r100'
-    run_paths = sorted(glob.glob(base_pattern))# + glob.glob(noturb_path)
+    noturb_path = '/viper/ptmp/ferhi/StratDisk/noturb/r10'
+    run_paths = sorted(glob.glob(base_pattern)) + glob.glob(noturb_path)
     
     if not run_paths:
         print(f"No runs found matching pattern: {base_pattern}")
