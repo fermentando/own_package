@@ -202,6 +202,6 @@ for axs in [ax[0], ax[1]]:
     axs.set_xlim(left = 0, right = 1.5)
 
 ax[0].set_ylim(-3, 1)
-print("Saving figure to /u/ferhi/Figures/test_other_cases_evolution.png")
-plt.savefig('/u/ferhi/Figures/test_other_cases_evolution.png', dpi = 300, bbox_inches = 'tight')
+print("Saving figure to /u/ferhi/Figures/test_other_cases_evolution.pdf")
+plt.savefig('/u/ferhi/Figures/test_other_cases_evolution.pdf', dpi = 300, bbox_inches = 'tight')
 plt.show()

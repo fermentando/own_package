@@ -13,43 +13,6 @@ style.core.USER_LIBRARY_PATHS.append('custom_plot')
 ### Essentials ###
 homeDir = '/u/ferhi'
 
-
-@yt.derived_field(name=("gas", "pressure_normalized"), units="", sampling_type="cell")
-def _pressure_normalized(field, data):
-    p = data[("gas", "pressure")]
-    pmax = 1.5e-11 * (dyn / cm**2)
-    return p / pmax if pmax > 0 else p
-
-@yt.derived_field(name=("gas", "mixing_gas_flag"), units="", sampling_type="cell")
-def _temperature_range_flag(field, data):
-    T = data[("gas", "temperature")]
-    mask = (T >= 7e4 * yt.units.K) & (T <= 3e5 * yt.units.K)
-    return mask.astype("float")
-
-@yt.derived_field(name=("gas", "luminosity_normalized"), units="", sampling_type="cell")
-def _luminosity_normalized(field, data):
-    # Temperature field
-    T = data[("gas", "temperature")]
-    T_min = 0.8e5 * K
-    T_max = 1.2e5 * K
-    mask = (T >= T_min) & (T <= T_max)
-
-    vx = data[("gas", "velocity_x")]
-    vy = data[("gas", "velocity_y")]
-    vz = data[("gas", "velocity_z")]
-    v_mag = (vx**2 + vy**2 + vz**2)**0.5
-
-
-    cs = data[("gas", "sound_speed")]
-    M = v_mag / cs
-
-    L = T * (1 + M**2) * mask
-
-    # Normalize by max (avoid division by zero)
-    Lmax = L.max()
-    if Lmax > 0:
-        L = L / Lmax
-    return (L / Lmax).d if Lmax > 0 else L.d
 fields = {
 
     'density': ("gas", "density"),
@@ -190,17 +153,19 @@ def get_working_dirs():
     if len(user_args) > 0:
         RUNS = [os.getcwd()]
         run_paths = RUNS
-        parts = RUNS[0].split('/')
+        parts = RUNS[0].split('ferhi/')
         saveFile = f"{parts[-1]}"
-        print('Saved to: ', saveFile)
+        print('Saved to: ', os.path.join('/u/ferhi/Figures/',saveFile))
+        if not os.path.exists(os.path.join('/u/ferhi/Figures/',saveFile)): 
+            os.makedirs(os.path.join('/u/ferhi/Figures/',saveFile))
         
     else:
         runDir = os.getcwd()
-        run_paths = np.array([
+        run_paths = [
             os.path.join(runDir, folder) 
             for folder in os.listdir(runDir) 
             if os.path.isdir(os.path.join(runDir, folder)) and 'strat.in' in os.listdir(os.path.join(runDir, folder)) 
-        ])
+        ]
         parts = runDir.split('/')
         saveFile = f"{parts[-2]}/{parts[-1]}"
         if not os.path.exists(os.path.join('/u/ferhi/Figures/',parts[-2])): 

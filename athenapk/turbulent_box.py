@@ -9,6 +9,7 @@ import numpy as np
 import utils as ut
 from cooling import initialize_cooling_constants, get_l_shatter, load_cooling_table, get_t_cool_n
 import os
+import astropy.units as u
 
 
 class TurbulentBox:
@@ -34,6 +35,7 @@ class TurbulentBox:
         self.reader = ut.AthenaPKInputFileReader(filename_input)
         self._initialize_constants()
         self._load_cooling_table(dir)
+        self._load_simulation_parameters()
         self._set_t_corr()
 
     def _initialize_constants(self):
@@ -63,6 +65,18 @@ class TurbulentBox:
         rel_path = self.reader.get('cooling', 'table_filename')
         cooling_table_path = os.path.abspath(os.path.join(dir, rel_path))
         load_cooling_table(cooling_table_path)
+
+    def _load_simulation_parameters(self):
+        """Load stratified box parameters from input file."""
+        self.r_cloud_inserted = float(self.reader.get('problem/turbulence', 'inject_blob_radius_0'))
+        self.cloud_rho = float(self.reader.get('problem/turbulence', 'rho0')) * 100 
+        self.T_cloud = 1e4
+        self.chi = 100
+        self.mach = float(self.reader.get('problem/turbulence', 'Mach_drive'))
+
+        self.code_mass_cgs = float(self.reader.get('units', 'code_mass_cgs'))
+        self.code_length_cgs = float(self.reader.get('units', 'code_length_cgs'))
+        self.code_time_cgs = float(self.reader.get('units', 'code_time_cgs'))
 
     def _get_c_s(self, T):
         """
@@ -157,12 +171,14 @@ class TurbulentBox:
         t_eddy = L_drive / v_turb
         accel_rms = v_turb**2 / L_drive 
 
-        tlim = 8 * t_eddy
-        dt_hst = 0.01 * t_eddy
+        t_injec = 4 * t_eddy
+        self.t_inject = t_injec
+        tlim =  10 * t_injec
+        dt_hst = 0.001 * t_eddy
         dt_hdf = 0.1 * t_eddy
-        dt_rst = 0.5 * t_eddy
+        dt_rst = 1 * t_eddy
 
-        self.reader.set_('problem/turbulence', 'corr_time', t_eddy)
+        self.reader.set_('problem/turbulence', 'corr_time', t_injec)
         self.reader.set_('hydro', 'dfloor', dfloor)
         self.reader.set_('problem/turbulence', 'accel_rms', accel_rms)
         self.reader.set_('parthenon/time', 'tlim', tlim)
@@ -178,6 +194,7 @@ class TurbulentBox:
         """Print the current state of the initial conditions."""
         Lambda_units = float(self.reader.get('cooling', 'lambda_units_cgs'))
         print(f"Cooling function units: {Lambda_units:.3e} erg cm^3 / s")
+        Lx = float(self.reader.get('parthenon/mesh', 'x1max')) - float(self.reader.get('parthenon/mesh', 'x1min'))
         p0 = float(self.reader.get('problem/turbulence', 'p0')) * self.code_mass_cgs / self.code_length_cgs / self.code_time_cgs**2
         rho0 = float(self.reader.get('problem/turbulence', 'rho0')) * self.code_mass_cgs / self.code_length_cgs**3
         chi_inserted_cloud = float(self.reader.get('problem/turbulence', 'chi_inserted_cloud'))
@@ -185,8 +202,10 @@ class TurbulentBox:
         mach = float(self.reader.get('problem/turbulence', 'Mach_drive'))
         dx = (float(self.reader.get('parthenon/mesh', 'x1max')) - float(self.reader.get('parthenon/mesh', 'x1min'))) / int(self.reader.get('parthenon/mesh', 'nx1'))
         rcl = float(self.reader.get('problem/turbulence', 'inject_blob_radius_0'))
+        cloud_position = list(float(i) for i in self.reader.get('problem/turbulence', 'inject_blob_loc_0')[1:-1].split(","))
         cs = self._get_c_s(T0)  # Sound speed in the medium
         v_turb = cs * mach
+        tgrow = chi_inserted_cloud * np.sqrt(get_t_cool_n(T0 / (chi_inserted_cloud), rho0 * chi_inserted_cloud / self.mbar, self.mbar)*Lambda_units * rcl * self.code_length_cgs / v_turb) 
 
         print("Current Initial Conditions:")
         print(f"  Density: {rho0:.3e} g/cm^3")
@@ -203,6 +222,10 @@ class TurbulentBox:
         print(f"  Cloud radius: {rcl:.3e} pc")
         print(f"  Cloud / Lshatter: {rcl * ut.constants.pc_to_cm / get_l_shatter(p0)[0] / Lambda_units:.3e} ")
         print(f"  Cloud radius / cell resolution: {rcl /dx:.3e} ")
+        print(f"  Ly/cloud_r: {Lx * self.code_length_cgs / (rcl * ut.constants.pc_to_cm)}")
+        print(f"  Centre - rx: {float(cloud_position[0]) - rcl}")
+
+        print(f"  g tgrow (kms^-1):", 1e-8*tgrow / 1e5)
 
 
     def enlarge_dim(self, increase_factor, axs):
@@ -217,8 +240,8 @@ class TurbulentBox:
             Axes to enlarge (1, 2, or 3)
         """
         for axis in axs:
-            if axis == 2: fmin = -0.1; fmax = 0.9
-            else: fmin = -0.5; fmax = 0.5
+            if axis == 2: fmin = 0; fmax = 1
+            else: fmin = 0; fmax = 1
             xmin2, xmax2 = float(self.reader.get('parthenon/mesh', f'x{axis}min')), float(self.reader.get('parthenon/mesh', f'x{axis}max'))
             nx2_per_m = int(self.reader.get('parthenon/meshblock', f'nx{axis}'))
             meshblocks = int(self.reader.get('parthenon/mesh', f'nx{axis}')) / nx2_per_m
@@ -259,3 +282,109 @@ class TurbulentBox:
         print(f"  Cloud / Lshatter: {rcl* ut.constants.pc_to_cm / get_l_shatter(rho0 / self.mbar * ut.constants.kb * T0)[0]/ float(lambda_units.group(1)):.3e} ")
         print(f"lshatter at restart conditions: {lshatter:.3e} pc")
         return t_cool_restart
+    
+    def set_tcoolmix_ratio(self, target_ratio):
+        """
+        Adjust cloud radius to achieve a target t_cool,mix / t_cc (eddy time),
+        while scaling the box to keep resolution (dx) constant.
+        """
+
+        # --- Load current parameters ---
+        Lambda_units = float(self.reader.get('cooling', 'lambda_units_cgs'))
+
+        x1min = float(self.reader.get('parthenon/mesh', 'x1min'))
+        x1max = float(self.reader.get('parthenon/mesh', 'x1max'))
+        nx1   = int(self.reader.get('parthenon/mesh', 'nx1'))
+
+        Lx = x1max - x1min
+        dx = Lx / nx1
+
+        p0 = float(self.reader.get('problem/turbulence', 'p0')) * self.code_mass_cgs / self.code_length_cgs / self.code_time_cgs**2
+        rho0 = float(self.reader.get('problem/turbulence', 'rho0')) * self.code_mass_cgs / self.code_length_cgs**3
+        chi = float(self.reader.get('problem/turbulence', 'chi_inserted_cloud'))
+        mach = float(self.reader.get('problem/turbulence', 'Mach_drive'))
+
+        rcl = float(self.reader.get('problem/turbulence', 'inject_blob_radius_0'))
+
+        # --- Derived quantities ---
+        T0 = p0 / (rho0 * ut.constants.kb / self.mbar)
+        cs = self._get_c_s(T0)
+        v_turb = cs * mach
+
+        # --- Current ratio ---
+        tcool_mix = get_t_cool_n(
+            T0 / (chi)**0.5,
+            rho0 * (chi)**0.5 / self.mbar,
+            self.mbar
+        ) * Lambda_units
+
+        t_eddy = rcl * self.code_length_cgs * (chi)**0.5 / v_turb
+
+        current_ratio = tcool_mix / t_eddy
+
+        # --- Compute new radius ---
+        rcl_new = rcl * (current_ratio / target_ratio)
+
+        # --- Scale box to keep dx constant ---
+        scale_factor = rcl_new / rcl
+
+        # --- Update parameters ---
+        self.reader.set_('problem/turbulence', 'inject_blob_radius_0', rcl_new)
+
+        self.reader.change_aspect_xlim('parthenon/mesh', 'x1max', scale_factor)
+        self.reader.change_aspect_xlim('parthenon/mesh', 'x1min', scale_factor)
+        self.reader.change_aspect_xlim('parthenon/mesh', 'x2max', scale_factor)
+        self.reader.change_aspect_xlim('parthenon/mesh', 'x2min', scale_factor)
+        self.reader.change_aspect_xlim('parthenon/mesh', 'x3max', scale_factor)
+        self.reader.change_aspect_xlim('parthenon/mesh', 'x3min', scale_factor)
+        self.reader.save()
+
+        # (Optional: repeat for x2/x3 if needed)
+
+        # --- Print summary ---
+        print("Updated parameters:")
+        print(f"  Target ratio: {target_ratio:.3e}")
+        print(f"  Old ratio: {current_ratio:.3e}")
+        print(f"  New radius: {rcl_new:.3e}")
+
+    def set_rcloud_lshatter(self, target_ratio):
+        """
+        Adjust cloud radius to achieve a target r_cloud / l_shatter,
+        while scaling the box to keep resolution constant.
+        """
+
+        # --- Load parameters ---
+        Lambda_units = float(self.reader.get('cooling', 'lambda_units_cgs'))
+
+        p0 = float(self.reader.get('problem/turbulence', 'p0')) * self.code_mass_cgs / self.code_length_cgs / self.code_time_cgs**2
+
+        rcl = float(self.reader.get('problem/turbulence', 'inject_blob_radius_0'))
+
+        # --- Compute l_shatter ---
+        l_shatter = get_l_shatter(p0)[0]  # in cm
+
+        # --- Current ratio ---
+        current_ratio = rcl * ut.constants.pc_to_cm / l_shatter / Lambda_units
+
+        # --- New radius ---
+        rcl_new = rcl * (target_ratio / current_ratio)
+
+        # --- Scale factor ---
+        scale_factor = rcl_new / rcl
+
+        # --- Update radius ---
+        self.reader.set_('problem/turbulence', 'inject_blob_radius_0', rcl_new)
+
+        # --- Scale ALL box dimensions consistently ---
+        for dim in ['x1', 'x2', 'x3']:
+            self.reader.change_aspect_xlim('parthenon/mesh', f'{dim}max', scale_factor)
+            self.reader.change_aspect_xlim('parthenon/mesh', f'{dim}min', scale_factor)
+
+        self.reader.save()
+
+        # --- Print summary ---
+        print("Updated r_cloud / l_shatter:")
+        print(f"  Target: {target_ratio:.3e}")
+        print(f"  Old:    {current_ratio:.3e}")
+        print(f"  New radius: {rcl_new:.3e}")
+        print(f"  Scale factor: {scale_factor:.3e}")

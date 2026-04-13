@@ -15,19 +15,10 @@ cmap = sns.color_palette("icefire", as_cmap=True)
 
 # Define your 4 run paths
 base_run_paths = [
-    "/viper/ptmp/ferhi/StratDisk/noturb/r100/",
-    "/viper/ptmp/ferhi/StratDisk/m0.1/r100_v2/",
-    "/viper/ptmp/ferhi/StratDisk/m0.3/r100_v2/",
-    "/viper/ptmp/ferhi/StratDisk/m0.5/r100_v2/burnin/"
+    '/viper/ptmp/ferhi/InfallTurbulent/mach_test/m0.1/500lshatter/',
+    '/viper/ptmp/ferhi/InfallTurbulent/mach_test/m0.3/500lshatter/',
+    '/viper/ptmp/ferhi/InfallTurbulent/mach_test/m0.5/500lshatter/'
 ]
-
-
-
-#[
-#    '/viper/ptmp/ferhi/InfallTurbulent/mach_test/m0.1/500lshatter/',
-#    '/viper/ptmp/ferhi/InfallTurbulent/mach_test/m0.3/500lshatter/',
-#    '/viper/ptmp/ferhi/InfallTurbulent/mach_test/m0.5/500lshatter/'
-#]
 
 
 
@@ -58,37 +49,37 @@ for path in base_run_paths:
     sim = StratifiedBox(path + "strat.in", path)
     dt = float(sim.reader.get('parthenon/output2', 'dt'))
     print(f"dt for {path}: {dt}")
-    if 'noturb' in path:
+    if 'm0.1' in path:
         print(f"Calculating tlim for {path}...", len(glob.glob(path + "out/parthenon.prim.*.phdf")))
-        tlim = len(glob.glob(path + "out/parthenon.prim.*.phdf")) * dt
-        shift_time = 0
+        tlim = len(glob.glob(path + "out/parthenon.prim.*.phdf")) * dt 
+        shift_time = sim.t_inject
     else:
-        shift_time = float(sim.reader.get('problem/stratified_box', 'inject_once_at_time'))
+        shift_time = sim.t_inject
 
 
     # Import all snapshots for comparison
-    snp_interval = shift_time  + tlim / 1.2
-    snp_index = int(snp_interval / dt)
-    snp_path = os.path.dirname(path) + f"/out/parthenon.prim.{snp_index:05d}.phdf"
-    run_paths.append(snp_path)
+    for i in range(4):
+         snp_interval = shift_time  + i * tlim / 11
+         snp_index = int(snp_interval / dt)
+         if snp_index >= len(glob.glob(path + "out/parthenon.prim.*.phdf")) -1:
+             snp_index = len(glob.glob(path + "out/parthenon.prim.*.phdf")) - 2
+             print(f"Warning: Requested snapshot index {snp_index} exceeds available snapshots. Using index {snp_index} instead.")
+         snp_path = os.path.dirname(path) + f"/out/parthenon.prim.{snp_index:05d}.phdf"
+         run_paths.append(snp_path)
     
 
 
 
 # Create figure with 1 row, 4 columns
-fig = plt.figure(figsize=(12, 8))
+fig = plt.figure(figsize=(8, 12))
 gs = fig.add_gridspec(
-    2, 4,   # 3 rows, 4 columns grid
-    height_ratios=[1,0.03], 
+    4, 4,   # 3 rows, 4 columns grid
+    height_ratios=[1,1,1,0.03], 
     hspace = 0.1
 )
 
 # Your original plots would be in:
-ax1 = fig.add_subplot(gs[0,0])
-ax2 = fig.add_subplot(gs[0,1])
-ax3 = fig.add_subplot(gs[0,2])
-ax4 = fig.add_subplot(gs[0,3])
-axes = [ax1, ax2, ax3, ax4]
+axes = [fig.add_subplot(gs[i, j]) for i in range(3) for j in range(4)]
 # Define shared normalization
 norm_plot = LogNorm(vmin=1, vmax=100)  # Adjust to your density range
 
@@ -101,8 +92,8 @@ for j, path in enumerate(run_paths):
     try:
         # Read data
         data = read_hdf5(path, fields=['T', 'rho'])
-        rho = data['rho'][:, :3*np.shape(data['rho'])[1]//4, :]  # Extract mid-plane slice
-        rho=np.transpose(rho, (1, 0, 2)) / 1e-25  # Normalize by minimum density
+        rho = data['rho'][:, np.shape(data['rho'])[1]//4:3*np.shape(data['rho'])[1]//4, :]  # Extract mid-plane slice
+        rho=np.transpose(rho, (1, 0, 2)) / 1e-24  # Normalize by minimum density
 
         
         # Use your original plotting function
@@ -128,15 +119,13 @@ for j, path in enumerate(run_paths):
         
         # Save the image for shared colorbar
         im = plot_dict['slc']
-        mach = path.split('m0')[-1].split("/")[0]
-        axes[j].set_title(rf'$\mathcal{{M}} \sim$ 0{mach}', color='black')
         
     except Exception as e:
         print(f"Error processing {path}: {e}")
         axes[j].axis('off')
 
 
-cbar_ax = fig.add_subplot(gs[1, :])
+cbar_ax = fig.add_subplot(gs[3, :])
 
 cbar = fig.colorbar(
     im,
@@ -153,29 +142,12 @@ cbar.ax.tick_params(
     length=6,
     direction='in'
 )
-cbar.outline.set_edgecolor('black')
-cbar.outline.set_linewidth(1.5)
 
-for ax in axes:
-    for spine in ax.spines.values():
-        spine.set_edgecolor('black')
-        spine.set_linewidth(1.5)
-cbar.ax.set_facecolor('none')
-
-for ax in axes:
-    ax.set_facecolor('none')
-    ax.spines['bottom'].set_color('black')
-    ax.spines['left'].set_color('black')
-    ax.spines['top'].set_color('black')
-    ax.spines['right'].set_color('black')
-
-fig.patch.set_alpha(0)
-
-cbar.set_label(r'$\chi$', fontsize=20, color='black')
+cbar.set_label(r'$\chi$', fontsize=20)
 plt.tight_layout()
 
 # Save and show
-save_path = '/u/ferhi/Figures/Comparative_analysis/comparative_density_projection_chi2_black.png'
+save_path = '/u/ferhi/Figures/Comparative_analysis/comparative_density_projection_chi2_500l.png'
 print('Saved to ' + save_path)
 plt.savefig(save_path, dpi=300, bbox_inches='tight')
 plt.show()

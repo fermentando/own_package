@@ -159,7 +159,7 @@ if Proj:
             top_slice = top_rho[:mid, :, mid:slab_end]
             top_plot = plot_projection(top_slice, view_dir=view_dir, cmap=cmap,
                                        weight_data=None, new_fig=False, cbar_flag=False,
-                                       fig=fig, ax=top_ax, kwargs={'norm': norm_plot})
+                                       fig=fig, ax=top_ax, kwargs={'norm': norm_plot, 'rasterized': False})
 
             # draw the same contour (from the full projection) on the bottom half
             weight_data = np.ones_like(rho)
@@ -221,8 +221,8 @@ if Proj:
     cbar_ax.tick_params(axis='x', which='both', color='white', direction='in', pad=10,    length=8,       # tick length
     width=2)
     cbar_ax.set_xlabel(r'$\chi$')
-    print(f'Saving figure to /u/ferhi/Figures/{savename}.png')
-    plt.savefig(f'/u/ferhi/Figures/{savename}.png',bbox_inches='tight', dpi=300)
+    print(f'Saving figure to /u/ferhi/Figures/{savename}.pdf')
+    plt.savefig(f'/u/ferhi/Figures/{savename}.pdf',bbox_inches='tight', dpi=300)
     plt.show()
     plt.clf()
 

@@ -11,6 +11,7 @@ import seaborn as sns
 from matplotlib.cm import ScalarMappable
 from matplotlib.lines import Line2D
 import matplotlib.colors as mcolors
+from matplotlib.patches import Patch
 import matplotlib.gridspec as gridspec
 
 
@@ -76,53 +77,28 @@ if __name__ == "__main__":
     plot_yt = False
     plot_hst = True
 
-    fig = plt.figure(figsize=(16, 10))
-    gs = gridspec.GridSpec(2, 5, width_ratios=[1, 1, 1, 1, 0.08], wspace=0.1, hspace=0.1, figure=fig)
-    ax = np.empty((2, 4), dtype=object)
-    ax[0, 0] = fig.add_subplot(gs[0, 0])
-    ax[0, 1] = fig.add_subplot(gs[0, 1])
-    ax[0, 2] = fig.add_subplot(gs[0, 2])
-    ax[0, 3] = fig.add_subplot(gs[0, 3])
-    ax[1, 0] = fig.add_subplot(gs[1, 0], sharex=ax[0, 0])
-    ax[1, 1] = fig.add_subplot(gs[1, 1], sharex=ax[0, 1])
-    ax[1, 2] = fig.add_subplot(gs[1, 2], sharex=ax[0, 2])
-    ax[1, 3] = fig.add_subplot(gs[1, 3], sharex=ax[0, 3])
-    cax = fig.add_subplot(gs[:, 4])
+    fig = plt.figure(figsize=(7,5))
+
 
     N_procs, user_args = get_n_procs_and_user_args()
     print(f"N_procs set to: {N_procs} processors.")
     gout = True
     
-    run_paths = ['/viper/ptmp/ferhi/LEGACY/fvLism/02kc','/viper/ptmp/ferhi/LEGACY/fvLism/01kc', '/viper/ptmp/ferhi/LEGACY/fvLism/kc', '/viper/ptmp/ferhi/LEGACY/fvLism/10kc']
+    run_paths = ['/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r','/viper/ptmp/ferhi/LEGACY/fvLism/01kc/fv01_30r_noTceil', 
+                '/viper/ptmp/ferhi/LEGACY/fvLism/02kc/fv01', '/viper/ptmp/ferhi/LEGACY/fvLism/02kc/fv01_noTceil']
 
 
 
-    for j, run in enumerate(run_paths):
-        all_runs = glob.glob(os.path.join(run, 'fv*'))
-        if j == 1:
-            other_dirs = glob.glob('/viper/ptmp/ferhi/d40rcl/01kc/fv*')
-            all_runs.extend(other_dirs)
-            more_dirs = glob.glob('/viper/ptmp/ferhi/d80rcl/01ekc/fv*')
-            all_runs.extend(more_dirs)
-        if j ==0: 
-            other_dirs = glob.glob('/viper/ptmp/ferhi/d20rcl/02ekc/fv*')
-            all_runs.extend(other_dirs)
-        if j ==2: 
-            other_dirs = glob.glob('/viper/ptmp/ferhi/LEGACY/d40rcl/kc/fv*')
-            all_runs.extend(other_dirs)
-        for run_name in all_runs:
-            if "/viper/ptmp/ferhi/d20rcl/02ekc/fv03_lowres_raven" in run_name: continue
-            if "scaleless" in run_name: continue
-            if "testing" in run_name: continue
-            if "fv01_longer" in run_name: continue
-            if "noTceil" in run_name: continue
-            if "heating" in run_name: continue
-            if "fvLism/kc/fv02" in run_name: continue
-                
-            try: sim = SingleCloudCC(os.path.join(run_name, 'ism.in'), dir=run_name)
-            except Exception as e:
-                print(f"Error loading simulation {run_name}: {e}")
-                continue
+    for j, run_name in enumerate(run_paths):
+        #if j == 1:
+            #other_dirs = glob.glob('/viper/ptmp/ferhi/d40rcl/01kc/fv*')
+            #all_runs.extend(other_dirs)
+            #more_dirs = glob.glob('/viper/ptmp/ferhi/d80rcl/01ekc/fv*')
+            #all_runs.extend(more_dirs)
+        #if j ==0: 
+            #other_dirs = glob.glob('/viper/ptmp/ferhi/d20rcl/02ekc/fv*')
+
+            sim = SingleCloudCC(os.path.join(run_name, 'ism.in'), dir=run_name)
             code_time_cgs = float(sim.reader.get('units', 'code_time_cgs'))
             code_length_cgs = float(sim.reader.get('units', 'code_length_cgs'))
             files = np.sort(glob.glob(os.path.join(run_name, 'out/parthenon.prim.*.phdf')))
@@ -152,7 +128,23 @@ if __name__ == "__main__":
             #timeseries = timeseries[mask]
             color = sm.to_rgba(10*depth)
 
-            label = run.split('/')[-1]
+            if j==0:
+                 label = r'$\Lambda_{\mathrm{ceil}}$'
+                 color = "#175ecf"
+                 linestyles = '-'
+            if j==1: 
+                label = r'no $\Lambda_{\mathrm{ceil}}$'
+                color = "#175ecf"
+                linestyles = '--'
+
+            if j ==2:
+                color = "#f7be10"
+                label = ''
+                linestyles = '-'
+            if j == 3:
+                color = "#f7be10"
+                label = ''
+                linestyles = '--'
             plt.style.use('custom_plot') 
 
             time_axis = timeseries * code_time_cgs 
@@ -167,60 +159,32 @@ if __name__ == "__main__":
             correction_index_v = (np.abs(time_axis2 - t_shift)).argmin()
 
 
-            ax[0,j].plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], color=color, linestyle=linestyles[base_fv], alpha=0.8)
-            ax[1,j].plot((times * code_time_cgs - t_shift)/ t_linear, v_normalised, color=color, linestyle=linestyles[base_fv], alpha=0.8)
+            plt.plot((timeseries * code_time_cgs - t_shift) / t_linear, norm_mass-norm_mass[correction_index_mass], color=color, alpha=0.8, label=label, linestyle=linestyles)
             #ax[0, j].plot(time_axis[idx]/t_linear, norm_mass[idx], marker='o', color='black', zorder=10, alpha = 0.8)  
             #ax[1, j].plot(time_axis2[idx2]/t_linear, v_normalised[idx2], marker='o', color='black', zorder=10, alpha = 0.8)
             
-            ax[0,j].set_xlim(left = 0)
-            ax[0,j].set_xlim(left = 0)
-
-radii = ['10', '', '10^{-1}', '10^{-2}']
-for j in range(4):
-    ax[0, j].set_title(rf'$r_{{\rm cl}} = {{{radii[j]}}} \, r_{{\rm crit}}$', fontsize=18, pad=10)
+            plt.xlim(left = 0)
 
 
-fv_legend_elements = [
-    Line2D([0], [0], color='black', linestyle='-', label=r'$f_v = 10^{\mathrm{-1}}$'),
-    Line2D([0], [0], color='black', linestyle=':', label=r'$f_v = 10^{\mathrm{-2}}$'),
-    Line2D([0], [0], color='black', linestyle='--', label=r'$f_v = 10^{\mathrm{-3}}$'),
-]
-fig.subplots_adjust(top=0.92)  
-fig.legend(
-    handles=fv_legend_elements,
-    loc='upper center',
-    ncol=3,
-    bbox_to_anchor=(0.5, 1.01),  # Slightly above the plot
-    frameon=True,
-)
+# Define line styles
+line_styles = ["--", "-"]
+chi_labels = [r'no $\Lambda_{\mathrm{ceil}}$', r'$\Lambda_{\mathrm{ceil}}$']
 
+# Create legend handles for line styles
+line_handles = [Line2D([0], [0], color='k', linestyle=ls, label=label) for ls, label in zip(line_styles, chi_labels)]
 
-cbar = fig.colorbar(sm, cax=cax, orientation='vertical')
-cbar.set_label(r'$L_{\mathrm{ISM}}$ [$r_{\mathrm{cl}}$]')
-cax.tick_params(axis='y', which='both', color='white', labelcolor='black', direction='in')
+# Combine both handles
+all_handles = line_handles
 
 # Axis labels
-ax[0, 0].set_ylabel(r'$\log\left(m(T < 2T_\mathrm{cl}) / m_0\right)$', labelpad=8)
-ax[1, 0].set_ylabel(r'$\Delta v_\mathrm{shear} / v_w$', labelpad = 8)
-for axs in [ax[1, 0], ax[1, 1], ax[1, 2], ax[1,3]]:
-    axs.set_xlabel(r'$\tau$')
-    axs.set_ylim(0,1)
-    
+plt.ylabel(r'$\log\left(m(T < 2T_\mathrm{cl}) / m_0\right)$', labelpad=8)
 
-for axs in [ax[0, 0], ax[0, 1], ax[0, 2], ax[0,3]]:
-    axs.set_ylim(-3, 1)
+plt.xlabel(r'$\tau$')
+plt.legend(handles = all_handles, loc="lower right")
+plt.ylim(-3, 1)
 
-plt.setp(ax[0,1].get_yticklabels(), visible=False)
-plt.setp(ax[1,1].get_yticklabels(), visible=False)
-plt.setp(ax[0,2].get_yticklabels(), visible=False)
-plt.setp(ax[1,2].get_yticklabels(), visible=False)
-plt.setp(ax[0,3].get_yticklabels(), visible=False)
-plt.setp(ax[1,3].get_yticklabels(), visible=False)
-plt.setp(ax[0,0].get_xticklabels(), visible=False)
-plt.setp(ax[0,1].get_xticklabels(), visible=False)
-plt.setp(ax[0,2].get_xticklabels(), visible=False)
-plt.setp(ax[0,3].get_xticklabels(), visible=False)
 
-print("Saving figure to /u/ferhi/Figures/testing_mass_evolution.pdf")
-plt.savefig('/u/ferhi/Figures/testing_mass_evolution.pdf', dpi = 300, bbox_inches = 'tight')
+
+print("Saving figure to /u/ferhi/Figures/heating_convergence.pdf")
+plt.savefig('/u/ferhi/Figures/heating_convergence.pdf', dpi = 300, bbox_inches = 'tight')
 plt.show()

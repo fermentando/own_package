@@ -219,6 +219,7 @@ def plot_projection(
             **kwargs,
             
         )
+    slc.set_rasterized(True) 
 
     ax.set_aspect("auto")
 

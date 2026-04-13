@@ -140,8 +140,8 @@ plt.legend(handles, labels, handler_map={
     handles[-1]: HandlerMultiMarker(**combined_handles[1][1])
 }, loc='best')
 
-print("Figure saved to /u/ferhi/Figures/fvLism_plot.png")
-plt.savefig('/u/ferhi/Figures/fvLism_plot.png', dpi=300, bbox_inches='tight', transparent=False)
+print("Figure saved to /u/ferhi/Figures/fvLism_plot.pdf")
+plt.savefig('/u/ferhi/Figures/fvLism_plot.pdf', dpi=300, bbox_inches='tight', transparent=False)
 plt.show()
 
 

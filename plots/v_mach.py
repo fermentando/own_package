@@ -12,6 +12,7 @@ from cooling import get_c_s
 from stratified_box import StratifiedBox
 from turbulent_box import TurbulentBox
 from cooling import get_t_cool_cgs
+import seaborn as sns
 
 def read_hst(run): 
     data = np.loadtxt(os.path.join(run, 'out/parthenon.out1.hst'))
@@ -93,9 +94,9 @@ if __name__ == "__main__":
     plt.style.use('custom_plot')
     
     # Find all matching runs
-    base_pattern = '/viper/ptmp/ferhi/StratDisk/m0.*/r10/burnin'
-    noturb_path = '/viper/ptmp/ferhi/StratDisk/noturb/r10'
-    run_paths = sorted(glob.glob(base_pattern)) + glob.glob(noturb_path)
+    base_pattern = '/viper/ptmp/ferhi/StratDisk/m0.*/r100/burnin'
+    noturb_path = '/viper/ptmp/ferhi/StratDisk/noturb/r100'
+    run_paths = glob.glob(noturb_path) + sorted(glob.glob(base_pattern))
     
     if not run_paths:
         print(f"No runs found matching pattern: {base_pattern}")
@@ -135,12 +136,14 @@ if __name__ == "__main__":
     
     # Set up colormap
     norm = Normalize(vmin=min(mach_values), vmax=max(mach_values))
-    cmap = cm.get_cmap('viridis')  # You can change to 'plasma', 'coolwarm', etc.
+    cmap =sns.diverging_palette(250, 30, l=65, center="dark", as_cmap=True)
+    
     
     # Create figure with four subplots
-    fig, (ax_mass, ax_vel, ax_pos, ax_tgrow) = plt.subplots(4, 1, figsize=(10, 16), sharex=True)
+    fig, ((ax_mass, ax_vel), (ax_pos, ax_tgrow)) = plt.subplots(2, 2, figsize=(12,8), sharex=True)
     
     # Plot each run
+    counter = 0
     for run, mach_val, r_val in zip(valid_runs, mach_values, r_values):
         try:
             sim = StratifiedBox(os.path.join(run, 'strat.in'), dir=run)
@@ -150,6 +153,7 @@ if __name__ == "__main__":
             # Get mass and velocity evolution
             times, norm_mass, cgout, wgout, total = mass_evolution(run, gout=True)
             tvs, vel = vel_evolution(run)
+            print("This is mean velocity, radius and Mach: ", np.mean(vel), r_val, mach_val)
             
             # Find injection time (similar to original script)
             try:
@@ -214,32 +218,30 @@ if __name__ == "__main__":
             
             # Get color from colormap
             color = cmap(norm(mach_val))
+            counter += 1
             
             # Plot mass evolution
             ax_mass.plot(time_myr, norm_mass, 
                         color=color, 
-                        label=f'Mach={mach_val:.3f}', 
                         alpha=0.8,
                         linewidth=2)
             
             # Plot velocity evolution
-            ax_vel.plot(time_myr, vel_kms, 
+            ax_vel.plot(time_myr, -vel_kms, 
                        color=color, 
-                       label=f'Mach={mach_val:.3f}', 
                        alpha=0.8,
                        linewidth=2)
             
             # Plot normalized position evolution
             ax_pos.plot(time_myr, y_position_normalized, 
                        color=color, 
-                       label=f'Mach={mach_val:.3f}', 
                        alpha=0.8,
                        linewidth=2)
             
             # Plot growth timescale
             ax_tgrow.plot(time_myr, growth_timescale, 
                          color=color, 
-                         label=f'Mach={mach_val:.3f}', 
+                         label=f'Mach={mach_val:.1f}', 
                          alpha=0.8,
                          linewidth=2)
             
@@ -264,19 +266,19 @@ if __name__ == "__main__":
     ax_mass.set_ylim(bottom=-1, top=2)
     ax_mass.set_xlim(left=0)
     ax_mass.grid(True, alpha=0.3)
-    ax_mass.legend(loc='best', fontsize=10, framealpha=0.9)
+
     
     # Labels and formatting for velocity plot
-    ax_vel.set_ylabel(r'Speed [km/s]', fontsize=14)
+    ax_vel.set_ylabel(r'v$_{\rm infall}[km/s]$', fontsize=14)
     ax_vel.set_xlim(left=0)
     ax_vel.grid(True, alpha=0.3)
-    ax_vel.legend(loc='best', fontsize=10, framealpha=0.9)
+
     
     # Labels and formatting for position plot
     ax_pos.set_ylabel(r'$z/r_{\rm cloud}$', fontsize=14)
     ax_pos.set_xlim(left=0)
     ax_pos.grid(True, alpha=0.3)
-    ax_pos.legend(loc='best', fontsize=10, framealpha=0.9)
+    ax_pos.set_xlabel(r't [Myr]', fontsize=14)
     
     # Labels and formatting for growth timescale plot
     ax_tgrow.set_xlabel(r't [Myr]', fontsize=14)
@@ -287,9 +289,9 @@ if __name__ == "__main__":
     ax_tgrow.legend(loc='best', fontsize=10, framealpha=0.9)
     
     # Add colorbar
-    sm = cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    cbar = plt.colorbar(sm, ax=[ax_mass, ax_vel, ax_pos, ax_tgrow], label='Mach number (at 1.2 $t_{eddy}$)', pad=0.02)
+    #sm = cm.ScalarMappable(cmap=cmap, norm=norm)
+    #sm.set_array([])
+    #cbar = plt.colorbar(sm, ax=[ax_mass, ax_vel, ax_pos, ax_tgrow], label='Mach number (at 1.2 $t_{eddy}$)', pad=0.02)
 
     
     # Save figure

@@ -200,11 +200,11 @@ if Proj:
     #    spine.set_visible(False)
     #cbar_ax.tick_params(axis='y', which='both', color = 'white', direction='in')
     #cbar_ax.set_ylabel(r'$\chi$')
-    plt.suptitle(r'$(r_\mathrm{cl} / r_\mathrm{crit},,L_\mathrm{ISM} / r_\mathrm{cl}) = (1, 300)$', x=0.51, y=0.98, fontsize=16)
+    plt.suptitle(r'$(r_\mathrm{cl} / r_\mathrm{crit}, L_\mathrm{ISM} / r_\mathrm{cl}) = (1, 300)$', x=0.51, y=0.97, fontsize=16)
     # lower `top` to push subplots down and create more space under the suptitle
     fig.subplots_adjust(hspace=0.1, wspace=0.1, bottom=0.15, top=0.88)  # more space between title and plots
-    print(f'Saving figure to /u/ferhi/Figures/{savename}.png')
-    plt.savefig(f'/u/ferhi/Figures/{savename}.png',bbox_inches='tight', dpi=300)
+    print(f'Saving figure to /u/ferhi/Figures/{savename}.pdf')
+    plt.savefig(f'/u/ferhi/Figures/{savename}.pdf',bbox_inches='tight', dpi=300)
     plt.show()
     plt.clf()
 

@@ -200,7 +200,7 @@ cbar.ax.tick_params(which='both', color='white', labeltop=True, labelbottom=Fals
 
 # --- Save and Show ---
 plt.tight_layout()
-fig_path = '/u/ferhi/Figures/test_modified_fv_fA_LISM.png'
+fig_path = '/u/ferhi/Figures/test_modified_fv_fA_LISM.pdf'
 plt.savefig(fig_path, bbox_inches='tight', dpi=300)
 print("Saved plot to:", fig_path)
 plt.show()

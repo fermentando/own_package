@@ -220,50 +220,28 @@ def gen_adios_streaming_new(MeshSize, MeshBlockSize, fields, filename):
     
     # Precompute all block coordinates
     block_coords = []
-    for bx in range(nx_blocks):
+    for bz in range(nz_blocks):      # first axis of global_shape
         for by in range(ny_blocks):
-            for bz in range(nz_blocks):
-                block_coords.append((bx, by, bz))
-    
+            for bx in range(nx_blocks):
+                block_coords.append((bz, by, bx))
+        
     # Calculate number of steps needed
     n_steps = (total_blocks + blocks_per_step - 1) // blocks_per_step
     
     with Stream(saveDir, "w") as s:
-        for step_idx, _ in enumerate(s.steps(n_steps)):
-            step_start = step_idx * blocks_per_step
-            step_end = min((step_idx + 1) * blocks_per_step, total_blocks)
-            
-            for idx in range(step_start, step_end):
-                bx, by, bz = block_coords[idx]
-                
-                # Build one block: shape (n_fields, mbl3, mbl2, mbl1)
-                block = np.empty(
-                    (n_fields, mbl3, mbl2, mbl1),
-                    dtype=fields[0].dtype
-                )
-
-                # Extract from each field individually
+        for _ in s.steps(1):  # single step
+            for idx, (bz, by, bx) in enumerate(block_coords):
+                block = np.empty((n_fields, mbl3, mbl2, mbl1), dtype=fields[0].dtype)
                 for f in range(n_fields):
-                    z_start = bz * mbl3
-                    z_end = z_start + mbl3
-                    y_start = by * mbl2
-                    y_end = y_start + mbl2
-                    x_start = bx * mbl1
-                    x_end = x_start + mbl1
-                    
-                    block[f] = fields[f][z_start:z_end, y_start:y_end, x_start:x_end]
-
+                    block[f] = fields[f][
+                        bz * mbl3 : (bz + 1) * mbl3,
+                        by * mbl2 : (by + 1) * mbl2,
+                        bx * mbl1 : (bx + 1) * mbl1,
+                    ]
                 start = [bz, by, bx, 0, 0, 0, 0]
-                count = [1, 1, 1, n_fields, mbl3, mbl2, mbl1]
+                count = [1,  1,  1,  n_fields, mbl3, mbl2, mbl1]
+                s.write(varname, block, shape=global_shape, start=start, count=count)
 
-                s.write(
-                    varname,
-                    block,
-                    shape=global_shape,
-                    start=start,
-                    count=count
-                )
-                
                 if (idx + 1) % 50 == 0:
                     print(f"  Processed {idx + 1}/{total_blocks} blocks")
 

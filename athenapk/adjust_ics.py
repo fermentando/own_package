@@ -135,6 +135,12 @@ def _handle_turbulence_command(sim):
         sim.set_rin_res(resol_factor=factor)
     elif command == "cooling":
         sim.compute_restart_cooling_time()
+    elif command == "sett":
+        factor = float(sys.argv[2]) if len(sys.argv) == 3 else 0.1
+        sim.set_tcoolmix_ratio(factor)
+    elif command == "lshatter":
+        factor = float(sys.argv[2]) if len(sys.argv) == 3 else 500
+        sim.set_rcloud_lshatter(factor)
     else:
         print(f"Error: Unknown command '{command}'")
         print("Available commands: check, enlarge_y, enlarge_x, rescale")

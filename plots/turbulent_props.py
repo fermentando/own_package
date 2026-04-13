@@ -117,6 +117,7 @@ if __name__ == "__main__":
 
         ax_vel.set_xlabel(r't [Myr]')
         ax_vel.set_ylabel(r'infall speed $(km/s)$')
+        #ax_vel.set_ylim(bottom = -100, top = 100)
         ax_vel.set_xlim(left=0)
         ax_vel.legend()
 
