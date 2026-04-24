@@ -69,19 +69,19 @@ pl = pv.Plotter(off_screen=True)
 box = pv.Box(bounds=bounds)
 actor = pl.add_volume(np.log10(rho), scalars="values", cmap=custom_cmap, clim=[-26.4, -24.4], opacity=opacity, show_scalar_bar=False)
 pl.add_mesh(box, color="black", style="wireframe", line_width=2)
-pl.set_background("black")
-pl.camera_position = [eye0, (cn1 , cn2 , cn3+ 2 * rho.shape[2]), (1, 0, 0)]
-pl.reset_camera()
+pl.set_background(None, top=None)
+pl.camera_position = [eye0, (cn1 , cn2 , cn3), (1, 0, 0)]
+# Fit camera tightly to your data bounds
+#pl.reset_camera(bounds=bounds)
 pl.camera.zoom(3)
+
 actor.GetProperty().SetInterpolationTypeToLinear()
 
-# ✅ sampling resolution
-actor.GetMapper().SetSampleDistance(0.5)
-
-
-pl.enable_anti_aliasing()
 pl.screenshot(
     "multicloud_rendering.png",
-    window_size=[2500, 1500],
-    scale=4   # → 10k × 6k final
+    window_size=[3000, 800],
+    scale=4,   # → 10k × 6k final
+    transparent_background=True
 )
+
+
